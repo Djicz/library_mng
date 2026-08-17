@@ -6,6 +6,9 @@ const Books = () => {
   const [books, setBooks] = useState([]);
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showBulkAddForm, setShowBulkAddForm] = useState(false);
+  const [bulkBooksJson, setBulkBooksJson] = useState('[\n  {\n    "name": "Book Name",\n    "category": { "id": "category-id" },\n    "quantity": 1\n  }\n]');
+  const [bulkError, setBulkError] = useState('');
   const [newBook, setNewBook] = useState({ name: '', category: '', quantity: 1 });
   const [categories, setCategories] = useState([]);
   const navigate = useNavigate();
@@ -61,12 +64,56 @@ const Books = () => {
     }
   };
 
+  const handleBulkSubmit = async (e) => {
+    e.preventDefault();
+    setBulkError('');
+    try {
+      const parsedData = JSON.parse(bulkBooksJson);
+      if (!Array.isArray(parsedData)) {
+        setBulkError('Data must be a JSON array');
+        return;
+      }
+      await api.post('/manager/books/in-books', parsedData);
+      setShowBulkAddForm(false);
+      fetchBooks();
+    } catch (error) {
+      console.error("Error adding bulk books", error);
+      setBulkError(error.message || 'Invalid JSON or Server Error');
+    }
+  };
+
   return (
     <div>
       <h2>Book List</h2>
       
-      {!showAddForm && (
-        <button className="btn btn-success mb-3" onClick={() => setShowAddForm(true)}>Add New Book</button>
+      {!showAddForm && !showBulkAddForm && (
+        <div className="mb-3">
+          <button className="btn btn-success me-2" onClick={() => setShowAddForm(true)}>Add New Book</button>
+          <button className="btn btn-info text-white" onClick={() => setShowBulkAddForm(true)}>Bulk Import Books</button>
+        </div>
+      )}
+
+      {showBulkAddForm && (
+        <div className="card mb-4">
+          <div className="card-header bg-info text-white">Bulk Import Books (JSON)</div>
+          <div className="card-body">
+            {bulkError && <div className="alert alert-danger">{bulkError}</div>}
+            <form onSubmit={handleBulkSubmit}>
+              <div className="mb-3">
+                <label className="form-label">Paste JSON Array of Books</label>
+                <textarea 
+                  className="form-control" 
+                  rows="10" 
+                  value={bulkBooksJson} 
+                  onChange={e => setBulkBooksJson(e.target.value)} 
+                  required 
+                />
+              </div>
+              <button type="submit" className="btn btn-primary me-2">Save All</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowBulkAddForm(false)}>Cancel</button>
+            </form>
+          </div>
+        </div>
       )}
 
       {showAddForm && (

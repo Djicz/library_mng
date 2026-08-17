@@ -6,11 +6,13 @@ import com.library.management.entity.User;
 import com.library.management.repository.UserRepository;
 import com.library.management.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -26,6 +28,9 @@ public class AuthController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@RequestBody LoginRequest loginRequest) {
         Authentication authentication = authenticationManager.authenticate(
@@ -39,5 +44,17 @@ public class AuthController {
         String jwt = jwtUtil.generateToken(user.getUsername(), user.getRole());
 
         return ResponseEntity.ok(new JwtResponse(jwt, user.getRole(), user.getUsername()));
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<?> registerAcc(@RequestBody LoginRequest registerRequest) {
+        if(userRepository.findByUsername(registerRequest.getUsername()).isPresent()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Tài khoản đã tồn tại");
+        }
+        User user = new User();
+        user.setUsername(registerRequest.getUsername());
+        user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
+        user.setRole("BORROWER");
+        return ResponseEntity.ok(userRepository.save(user));
     }
 }

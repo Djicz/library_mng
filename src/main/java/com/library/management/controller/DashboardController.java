@@ -1,5 +1,6 @@
 package com.library.management.controller;
 
+import com.library.management.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +18,8 @@ public class DashboardController {
 
     @Autowired
     private NotificationJobService notificationJobService;
+    @Autowired
+    private UserRepository userRepository;
 
     @GetMapping
     public ResponseEntity<Map<String, String>> managerDashboard() {
@@ -32,4 +35,8 @@ public class DashboardController {
             return ResponseEntity.badRequest().body(Collections.singletonMap("error", e.getMessage()));
         }
     }
+//    @GetMapping("get-user")
+//    public ResponseEntity<?> getUser() {
+//        return ResponseEntity.ok(userRepository.findAll());
+//    }
 }

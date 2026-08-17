@@ -1,6 +1,7 @@
 package com.library.management.controller;
 
 import com.library.management.entity.Book;
+import com.library.management.entity.Category;
 import com.library.management.service.BookService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,7 @@ public class BookController {
     private BookService bookService;
     @Autowired
     private BorrowService borrowService;
+
     @GetMapping
     public ResponseEntity<List<Book>> listBooks(@RequestParam(required = false) String search) {
         if (search != null && !search.isEmpty()) {
@@ -32,21 +34,21 @@ public class BookController {
         Book saved = bookService.saveBook(book);
         return ResponseEntity.ok(saved);
     }
-    
+    @PostMapping("/in-books")
+    public ResponseEntity<List<Book>> saveAllBooks(@RequestBody List<Book> lst) {
+        List<Book> saved = bookService.saveAllBooks(lst);
+        return ResponseEntity.ok(saved);
+    }
     @DeleteMapping("/all")
     public ResponseEntity<?> deleteAllBooks() {
         borrowService.deleteAll();
         bookService.deleteAllBook();
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
-
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteBook(@PathVariable UUID id) {
         borrowService.deleteBorrowBookData(id);
         bookService.deleteBook(id);
         return ResponseEntity.ok().build();
     }
-
-    
-
 }

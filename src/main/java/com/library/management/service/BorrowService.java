@@ -5,6 +5,7 @@ import com.library.management.entity.BorrowRecord;
 import com.library.management.entity.User;
 import com.library.management.repository.BookRepository;
 import com.library.management.repository.BorrowRecordRepository;
+import com.library.management.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,13 +23,16 @@ public class BorrowService {
     @Autowired
     private BookRepository bookRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
     @Transactional
     public BorrowRecord borrowBook(User user, java.util.UUID bookId, LocalDate dueDate) {
         Optional<Book> bookOpt = bookRepository.findById(bookId);
         if (bookOpt.isPresent()) {
             Book book = bookOpt.get();
-            if ("AVAILABLE".equals(book.getStatus())) {
-                book.setStatus("BORROWED");
+            if (book.getQuantity() > 0) {
+                book.setQuantity(book.getQuantity() - 1);
                 bookRepository.save(book);
 
                 BorrowRecord record = new BorrowRecord();
@@ -54,7 +58,7 @@ public class BorrowService {
                 borrowRecordRepository.save(record);
 
                 Book book = record.getBook();
-                book.setStatus("AVAILABLE");
+                book.setQuantity(book.getQuantity() + 1);
                 bookRepository.save(book);
             }
         }
@@ -75,5 +79,13 @@ public class BorrowService {
     @Transactional
     public void deleteAll() {
         borrowRecordRepository.deleteAll();
+    }
+    @Transactional
+    public List<BorrowRecord> searchBorrow(String username) {
+        Optional<User> userOpt = userRepository.findByUsername(username);
+        if (userOpt.isPresent()) {
+            return borrowRecordRepository.findByUser(userOpt.get());
+        }
+        return List.of();
     }
 }

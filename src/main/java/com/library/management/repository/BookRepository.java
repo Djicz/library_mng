@@ -1,6 +1,7 @@
 package com.library.management.repository;
 
 import com.library.management.entity.Book;
+import com.library.management.entity.Category;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -10,5 +11,5 @@ import java.util.UUID;
 @Repository
 public interface BookRepository extends JpaRepository<Book, UUID> {
     List<Book> findByNameContainingIgnoreCase(String name);
-    List<Book> findByCategory(String category);
+    List<Book> findByCategoryContainingIgnoreCase(Category cate);
 }

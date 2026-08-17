@@ -24,7 +24,10 @@ public class ManagerBorrowController {
     private UserService userService;
 
     @GetMapping
-    public ResponseEntity<List<BorrowRecord>> viewBorrows() {
+    public ResponseEntity<List<BorrowRecord>> viewBorrows(String search) {
+        if(search != null && search.length() != 0) {
+            return ResponseEntity.ok(borrowService.searchBorrow(search));
+        }
         return ResponseEntity.ok(borrowService.getAllBorrowRecords());
     }
 

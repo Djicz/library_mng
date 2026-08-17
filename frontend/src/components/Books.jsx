@@ -6,7 +6,8 @@ const Books = () => {
   const [books, setBooks] = useState([]);
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newBook, setNewBook] = useState({ name: '', category: '' });
+  const [newBook, setNewBook] = useState({ name: '', category: '', quantity: 1 });
+  const [categories, setCategories] = useState([]);
   const navigate = useNavigate();
 
   const fetchBooks = async (searchTerm = '') => {
@@ -20,6 +21,15 @@ const Books = () => {
 
   useEffect(() => {
     fetchBooks();
+    const fetchCategories = async () => {
+      try {
+        const response = await api.get('/manager/category');
+        setCategories(response.data);
+      } catch (error) {
+        console.error("Error fetching categories", error);
+      }
+    };
+    fetchCategories();
   }, []);
 
   const handleSearch = (e) => {
@@ -41,8 +51,9 @@ const Books = () => {
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/manager/books', newBook);
-      setNewBook({ name: '', category: '' });
+      const bookData = { ...newBook, category: { id: newBook.category } };
+      await api.post('/manager/books', bookData);
+      setNewBook({ name: '', category: '', quantity: 1 });
       setShowAddForm(false);
       fetchBooks();
     } catch (error) {
@@ -69,7 +80,16 @@ const Books = () => {
               </div>
               <div className="mb-3">
                 <label className="form-label">Category</label>
-                <input type="text" className="form-control" value={newBook.category} onChange={e => setNewBook({...newBook, category: e.target.value})} required />
+                <select className="form-select" value={newBook.category} onChange={e => setNewBook({...newBook, category: e.target.value})} required>
+                  <option value="">-- Select Category --</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Quantity</label>
+                <input type="number" className="form-control" value={newBook.quantity} onChange={e => setNewBook({...newBook, quantity: parseInt(e.target.value) || 0})} min="0" required />
               </div>
               <button type="submit" className="btn btn-primary me-2">Save</button>
               <button type="button" className="btn btn-secondary" onClick={() => setShowAddForm(false)}>Cancel</button>
@@ -88,7 +108,7 @@ const Books = () => {
           <tr>
             <th>Name</th>
             <th>Category</th>
-            <th>Status</th>
+            <th>Quantity</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -96,10 +116,10 @@ const Books = () => {
           {books.map(book => (
             <tr key={book.id}>
               <td>{book.name}</td>
-              <td>{book.category}</td>
-              <td>{book.status}</td>
+              <td>{book.category?.name}</td>
+              <td>{book.quantity}</td>
               <td>
-                {book.status === 'AVAILABLE' && (
+                {book.quantity > 0 && (
                   <button className="btn btn-primary btn-sm me-2" onClick={() => navigate('/manager/borrows?assignBookId=' + book.id)}>Assign</button>
                 )}
                 <button className="btn btn-danger btn-sm" onClick={() => handleDelete(book.id)}>Delete</button>

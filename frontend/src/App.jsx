@@ -17,12 +17,12 @@ const PrivateRoute = ({ children, roleRequired }) => {
   if (roleRequired && role !== roleRequired) return <Navigate to="/login" />;
 
   return (
-    <>
+    <div className="app-layout">
       <Navigation />
-      <div className="container mt-4">
+      <div className="main-content">
         {children}
       </div>
-    </>
+    </div>
   );
 };
 

@@ -10,6 +10,8 @@ const Books = () => {
   const [bulkBooksJson, setBulkBooksJson] = useState('[\n  {\n    "name": "Book Name",\n    "category": { "id": "category-id" },\n    "quantity": 1\n  }\n]');
   const [bulkError, setBulkError] = useState('');
   const [newBook, setNewBook] = useState({ name: '', category: '', quantity: 1 });
+  const [editBookId, setEditBookId] = useState(null);
+  const [editBookData, setEditBookData] = useState({ name: '', category: '', quantity: 1 });
   const [categories, setCategories] = useState([]);
   const navigate = useNavigate();
 
@@ -79,6 +81,32 @@ const Books = () => {
     } catch (error) {
       console.error("Error adding bulk books", error);
       setBulkError(error.message || 'Invalid JSON or Server Error');
+    }
+  };
+
+  const startEdit = (book) => {
+    setEditBookId(book.id);
+    setEditBookData({
+      name: book.name,
+      category: book.category?.id || '',
+      quantity: book.quantity
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditBookId(null);
+    setEditBookData({ name: '', category: '', quantity: 1 });
+  };
+
+  const handleEditSubmit = async (id) => {
+    try {
+      const bookData = { ...editBookData, category: { id: editBookData.category } };
+      await api.put(`/manager/books/update/${id}`, bookData);
+      setEditBookId(null);
+      fetchBooks();
+    } catch (error) {
+      console.error("Error updating book", error);
+      alert("Error updating book");
     }
   };
 
@@ -162,15 +190,41 @@ const Books = () => {
         <tbody>
           {books.map(book => (
             <tr key={book.id}>
-              <td>{book.name}</td>
-              <td>{book.category?.name}</td>
-              <td>{book.quantity}</td>
-              <td>
-                {book.quantity > 0 && (
-                  <button className="btn btn-primary btn-sm me-2" onClick={() => navigate('/manager/borrows?assignBookId=' + book.id)}>Assign</button>
-                )}
-                <button className="btn btn-danger btn-sm" onClick={() => handleDelete(book.id)}>Delete</button>
-              </td>
+              {editBookId === book.id ? (
+                <>
+                  <td>
+                    <input type="text" className="form-control" value={editBookData.name} onChange={e => setEditBookData({...editBookData, name: e.target.value})} />
+                  </td>
+                  <td>
+                    <select className="form-select" value={editBookData.category} onChange={e => setEditBookData({...editBookData, category: e.target.value})}>
+                      <option value="">-- Select Category --</option>
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input type="number" className="form-control" value={editBookData.quantity} onChange={e => setEditBookData({...editBookData, quantity: parseInt(e.target.value) || 0})} min="0" />
+                  </td>
+                  <td>
+                    <button className="btn btn-success btn-sm me-2" onClick={() => handleEditSubmit(book.id)}>Save</button>
+                    <button className="btn btn-secondary btn-sm" onClick={cancelEdit}>Cancel</button>
+                  </td>
+                </>
+              ) : (
+                <>
+                  <td>{book.name}</td>
+                  <td>{book.category?.name}</td>
+                  <td>{book.quantity}</td>
+                  <td>
+                    {book.quantity > 0 && (
+                      <button className="btn btn-primary btn-sm me-2" onClick={() => navigate('/manager/borrows?assignBookId=' + book.id)}>Assign</button>
+                    )}
+                    <button className="btn btn-warning btn-sm me-2" onClick={() => startEdit(book)}>Edit</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(book.id)}>Delete</button>
+                  </td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>

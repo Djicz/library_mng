@@ -28,7 +28,10 @@ public class BookController {
             return ResponseEntity.ok(bookService.getAllBooks());
         }
     }
-
+    @PutMapping("/update/{id}")
+    public ResponseEntity<?> updateBook(@PathVariable UUID id, @RequestBody Book book) {
+        return ResponseEntity.ok(bookService.updateBook(id, book));
+    }
     @PostMapping
     public ResponseEntity<Book> saveBook(@RequestBody Book book) {
         Book saved = bookService.saveBook(book);

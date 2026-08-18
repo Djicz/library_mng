@@ -1,5 +1,6 @@
 package com.library.management.service;
 
+import com.library.management.controller.GlobalExceptionHandler.BookNotFoundException;
 import com.library.management.entity.Book;
 import com.library.management.entity.Category;
 import com.library.management.entity.User;
@@ -60,6 +61,14 @@ public class BookService {
 
     public Optional<Book> getBookById(UUID id) {
         return bookRepository.findById(id);
+    }
+
+    public Book updateBook(UUID id, Book book) {
+        Book bookz = bookRepository.findById(id).orElseThrow(() -> new BookNotFoundException("Không tìm thấy sách"));
+        bookz.setName(book.getName());
+        bookz.setQuantity(book.getQuantity());
+        bookz.setCategory(book.getCategory());
+        return bookRepository.save(bookz);
     }
 
     public void deleteBook(UUID id) {

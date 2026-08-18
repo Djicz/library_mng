@@ -13,6 +13,9 @@ public class User {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(nullable = false)
+    private String displayName;
+
     @Column(unique = true, nullable = false)
     private String username;
 
@@ -21,6 +24,9 @@ public class User {
 
     @Column(nullable = false)
     private String role; // "MANAGER" or "BORROWER"
+
+    @Column(nullable = false)
+    private String status;
 
     @com.fasterxml.jackson.annotation.JsonIgnore
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
@@ -45,4 +51,20 @@ public class User {
     public void setBorrowRecords(List<BorrowRecord> borrowRecords) { this.borrowRecords = borrowRecords; }
     public List<Notification> getNotifications() { return notifications; }
     public void setNotifications(List<Notification> notifications) { this.notifications = notifications; }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
 }

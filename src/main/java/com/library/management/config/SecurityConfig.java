@@ -1,5 +1,7 @@
 package com.library.management.config;
 
+import com.library.management.controller.GlobalExceptionHandler.UserNotFoundException;
+import com.library.management.controller.GlobalExceptionHandler.UserUnavailableException;
 import com.library.management.entity.User;
 import com.library.management.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
@@ -11,6 +13,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -54,8 +57,9 @@ public class SecurityConfig {
     public UserDetailsService userDetailsService(com.library.management.repository.UserRepository userRepository) {
         return username -> {
             User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new org.springframework.security.core.userdetails.UsernameNotFoundException("User not found: " + username));
-            
+                    .orElseThrow(() -> new UserNotFoundException("Không tìm thấy người dùng " + username));
+
+
             return org.springframework.security.core.userdetails.User.builder()
                     .username(user.getUsername())
                     .password(user.getPassword())

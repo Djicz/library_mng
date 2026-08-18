@@ -17,7 +17,9 @@ public class Category {
     @Column(unique = true, nullable = false)
     private String name;
 
-    public Category(){};
+    public Category() {
+    };
+
     public UUID getId() {
         return id;
     }

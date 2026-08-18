@@ -29,6 +29,9 @@ const Navigation = () => {
             <Link className={`nav-link-item ${currentPath.includes('/dashboard') ? 'active' : ''}`} to="/manager/dashboard">
               📊 Tổng quan
             </Link>
+            <Link className={`nav-link-item ${currentPath.includes('/categories') ? 'active' : ''}`} to="/manager/categories">
+              📑 Quản lý Thể loại
+            </Link>
             <Link className={`nav-link-item ${currentPath.includes('/books') ? 'active' : ''}`} to="/manager/books">
               📚 Quản lý Đầu Sách
             </Link>

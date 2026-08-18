@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import Categories from './components/Categories';
 import Books from './components/Books';
 import Borrows from './components/Borrows';
 import MyBooks from './components/MyBooks';
@@ -41,6 +42,12 @@ function App() {
         <Route path="/manager/books" element={
           <PrivateRoute roleRequired="MANAGER">
             <Books />
+          </PrivateRoute>
+        } />
+
+        <Route path="/manager/categories" element={
+          <PrivateRoute roleRequired="MANAGER">
+            <Categories />
           </PrivateRoute>
         } />
 

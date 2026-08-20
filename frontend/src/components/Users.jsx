@@ -1,14 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
+import { 
+  Users, 
+  UserCheck, 
+  ShieldCheck, 
+  Lock, 
+  Unlock, 
+  KeyRound, 
+  Edit3, 
+  Trash2, 
+  Check, 
+  X, 
+  Search,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
 
-const Users = () => {
+const UsersComponent = () => {
   const [users, setUsers] = useState([]);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [editUserId, setEditUserId] = useState(null);
   const [editUserData, setEditUserData] = useState({});
+  const [actionSuccess, setActionSuccess] = useState('');
 
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  const triggerSuccess = (msg) => {
+    setActionSuccess(msg);
+    setTimeout(() => setActionSuccess(''), 4000);
+  };
 
   const fetchUsers = async () => {
     try {
@@ -19,35 +43,39 @@ const Users = () => {
     }
   };
 
-  const handleLockUser = async (id) => {
-    if(window.confirm('Bạn có chắc muốn thay đổi trạng thái khóa/mở khóa người dùng này?')) {
+  const handleLockUser = async (user) => {
+    const isLocking = user.status === 'AVAILABLE';
+    const actionText = isLocking ? 'khóa' : 'mở khóa';
+    if (window.confirm(`Bạn có chắc muốn ${actionText} tài khoản "${user.username}"?`)) {
       try {
-        await api.put(`/manager/user/lock/${id}`);
+        await api.put(`/manager/user/lock/${user.id}`);
+        triggerSuccess(`Đã ${actionText} tài khoản "${user.username}" thành công.`);
         fetchUsers();
       } catch(error) {
-        alert('Lỗi khóa tài khoản');
+        alert('Lỗi khi thay đổi trạng thái tài khoản.');
       }
     }
   };
 
-  const handleResetPassword = async (id) => {
-    if(window.confirm('Bạn có chắc muốn reset mật khẩu người dùng này?')) {
+  const handleResetPassword = async (user) => {
+    if (window.confirm(`Xác nhận đặt lại (reset) mật khẩu cho người dùng "${user.username}"?`)) {
       try {
-        const response = await api.put(`/manager/user/reset-password/${id}`);
-        alert(response.data || 'Reset thành công');
+        const response = await api.put(`/manager/user/reset-password/${user.id}`);
+        triggerSuccess(typeof response.data === 'string' ? response.data : 'Reset mật khẩu thành công!');
       } catch(error) {
-        alert('Lỗi reset mật khẩu');
+        alert('Lỗi reset mật khẩu.');
       }
     }
   };
 
-  const handleDeleteUser = async (id) => {
-    if(window.confirm('Bạn có chắc chắn muốn xóa người dùng này?')) {
+  const handleDeleteUser = async (user) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa người dùng "${user.username}" vĩnh viễn?`)) {
       try {
-        await api.delete(`/manager/user/delete/${id}`);
+        await api.delete(`/manager/user/delete/${user.id}`);
+        triggerSuccess(`Đã xóa người dùng "${user.username}" thành công.`);
         fetchUsers();
       } catch(error) {
-        alert('Lỗi xóa người dùng');
+        alert('Lỗi khi xóa người dùng.');
       }
     }
   };
@@ -66,123 +94,273 @@ const Users = () => {
     try {
       await api.put(`/manager/user/update/${id}`, editUserData);
       setEditUserId(null);
+      triggerSuccess('Cập nhật thông tin người dùng thành công!');
       fetchUsers();
     } catch(error) {
-      alert('Lỗi cập nhật. Chú ý Backend có thể yêu cầu @RequestBody trong UserController');
+      alert('Lỗi cập nhật người dùng.');
     }
   };
 
+  const getAvatarGradient = (str) => {
+    const gradients = [
+      'linear-gradient(135deg, #6366f1, #a855f7)',
+      'linear-gradient(135deg, #3b82f6, #06b6d4)',
+      'linear-gradient(135deg, #10b981, #14b8a6)',
+      'linear-gradient(135deg, #f59e0b, #ef4444)',
+      'linear-gradient(135deg, #ec4899, #8b5cf6)'
+    ];
+    let hash = 0;
+    for (let i = 0; i < (str || '').length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return gradients[Math.abs(hash) % gradients.length];
+  };
+
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = !search || 
+      (user.username && user.username.toLowerCase().includes(search.toLowerCase())) ||
+      (user.displayName && user.displayName.toLowerCase().includes(search.toLowerCase()));
+    const matchesRole = !roleFilter || user.role === roleFilter;
+    const matchesStatus = !statusFilter || user.status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
   return (
-    <div>
-      <div className="dashboard-header">
-        <h1 className="dashboard-title">Quản lý Người Dùng</h1>
+    <div className="animate-fade-in">
+      {/* Header */}
+      <div style={{ marginBottom: '1.75rem' }}>
+        <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+          Quản Lý Người Dùng
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: '0.25rem 0 0 0' }}>
+          Quản lý danh sách tài khoản, phân quyền, khóa truy cập và đặt lại mật khẩu
+        </p>
       </div>
 
-      <div className="card-modern" style={{marginBottom: '2rem'}}>
-        <h3 style={{marginBottom: '1rem', color: 'var(--primary)'}}>👥 Danh Sách Người Dùng</h3>
-        <div className="table-responsive">
-          <table className="table table-hover align-middle" style={{marginBottom: 0, width: '100%', borderCollapse: 'collapse'}}>
-            <thead style={{backgroundColor: 'rgba(0,0,0,0.02)', textAlign: 'left'}}>
-              <tr>
-                <th style={{padding: '1rem', borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)'}}>ID</th>
-                <th style={{padding: '1rem', borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)'}}>Tài Khoản</th>
-                <th style={{padding: '1rem', borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)'}}>Tên Hiển Thị</th>
-                <th style={{padding: '1rem', borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)'}}>Vai Trò</th>
-                <th style={{padding: '1rem', borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)'}}>Trạng Thái</th>
-                <th style={{padding: '1rem', borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)'}}>Thao Tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(user => (
-                <tr key={user.id} style={{borderBottom: '1px solid var(--border-color)'}}>
-                  <td style={{padding: '1rem', color: 'var(--text-muted)'}}>#{user.id.substring(0,6)}...</td>
-                  
-                  {editUserId === user.id ? (
-                    <>
-                      <td style={{padding: '1rem', fontWeight: '600'}}>{user.username}</td>
-                      <td style={{padding: '1rem'}}>
-                        <input type="text" className="form-control" value={editUserData.displayName || ''} onChange={e => setEditUserData({...editUserData, displayName: e.target.value})} placeholder="Nhập tên hiển thị" />
-                      </td>
-                      <td style={{padding: '1rem'}}>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '20px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          backgroundColor: user.role === 'MANAGER' ? 'rgba(30, 58, 138, 0.1)' : 'rgba(107, 114, 128, 0.1)',
-                          color: user.role === 'MANAGER' ? 'var(--primary)' : 'var(--text-muted)'
-                        }}>
-                          {user.role === 'MANAGER' ? 'Quản lý' : 'Độc giả'}
-                        </span>
-                      </td>
-                      <td style={{padding: '1rem'}}>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '20px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          backgroundColor: user.status === 'UNAVAILABLE' ? 'rgba(220, 38, 38, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                          color: user.status === 'UNAVAILABLE' ? '#dc2626' : '#10b981'
-                        }}>
-                          {user.status === 'UNAVAILABLE' ? 'Bị khóa' : 'Hoạt động'}
-                        </span>
-                      </td>
-                      <td style={{padding: '1rem'}}>
-                        <button className="btn btn-success btn-sm me-2" onClick={() => submitEditUser(user.id)}>Lưu</button>
-                        <button className="btn btn-secondary btn-sm" onClick={cancelEditUser}>Hủy</button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td style={{padding: '1rem', fontWeight: '600'}}>{user.username}</td>
-                      <td style={{padding: '1rem'}}>{user.displayName || 'N/A'}</td>
-                      <td style={{padding: '1rem'}}>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '20px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          backgroundColor: user.role === 'MANAGER' ? 'rgba(30, 58, 138, 0.1)' : 'rgba(107, 114, 128, 0.1)',
-                          color: user.role === 'MANAGER' ? 'var(--primary)' : 'var(--text-muted)'
-                        }}>
-                          {user.role === 'MANAGER' ? 'Quản lý' : 'Độc giả'}
-                        </span>
-                      </td>
-                      <td style={{padding: '1rem'}}>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '20px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          backgroundColor: user.status === 'UNAVAILABLE' ? 'rgba(220, 38, 38, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                          color: user.status === 'UNAVAILABLE' ? '#dc2626' : '#10b981'
-                        }}>
-                          {user.status === 'UNAVAILABLE' ? 'Bị khóa' : 'Hoạt động'}
-                        </span>
-                      </td>
-                      <td style={{padding: '1rem'}}>
-                        <button className="btn btn-warning btn-sm me-2 mb-1" onClick={() => startEditUser(user)}>Sửa</button>
-                        <button className="btn btn-info btn-sm me-2 mb-1 text-white" onClick={() => handleResetPassword(user.id)}>Reset MK</button>
-                        <button className={`btn btn-sm me-2 mb-1 ${user.status === 'UNAVAILABLE' ? 'btn-success' : 'btn-secondary'}`} onClick={() => handleLockUser(user.id)}>
-                          {user.status === 'UNAVAILABLE' ? 'Mở Khóa' : 'Khóa'}
-                        </button>
-                        <button className="btn btn-danger btn-sm mb-1" onClick={() => handleDeleteUser(user.id)}>Xóa</button>
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-              {users.length === 0 && (
-                <tr>
-                  <td colSpan="6" style={{textAlign: 'center', padding: '2rem', color: 'var(--text-muted)'}}>Không có dữ liệu người dùng.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {actionSuccess && (
+        <div className="badge-status badge-status-success w-100 mb-3" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)', fontSize: '0.875rem' }}>
+          <CheckCircle2 size={16} />
+          <span>{actionSuccess}</span>
         </div>
+      )}
+
+      {/* Filter & Search Bar */}
+      <div className="card-glass mb-4" style={{ padding: '1rem 1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          <div className="search-input-group">
+            <Search size={18} className="search-icon-inside" />
+            <input 
+              type="text" 
+              className="search-input-field" 
+              placeholder="Tìm kiếm tài khoản, tên..." 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <select 
+              className="form-select-custom" 
+              style={{ width: 'auto', minWidth: '150px', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+              value={roleFilter}
+              onChange={e => setRoleFilter(e.target.value)}
+            >
+              <option value="">Tất cả vai trò</option>
+              <option value="MANAGER">Quản lý (Thủ thư)</option>
+              <option value="BORROWER">Độc giả</option>
+            </select>
+
+            <select 
+              className="form-select-custom" 
+              style={{ width: 'auto', minWidth: '150px', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+            >
+              <option value="">Tất cả trạng thái</option>
+              <option value="AVAILABLE">Đang hoạt động</option>
+              <option value="UNAVAILABLE">Đã bị khóa</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Users Table */}
+      <div className="table-modern-wrapper">
+        <table className="table-modern">
+          <thead>
+            <tr>
+              <th style={{ width: '100px' }}>ID</th>
+              <th>Người Dùng</th>
+              <th>Tài Khoản</th>
+              <th>Vai Trò</th>
+              <th>Trạng Thái</th>
+              <th style={{ textAlign: 'right' }}>Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUsers.map(user => (
+              <tr key={user.id}>
+                <td>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    #{user.id ? user.id.substring(0, 6) : 'N/A'}
+                  </span>
+                </td>
+                
+                {editUserId === user.id ? (
+                  <>
+                    <td>
+                      <input 
+                        type="text" 
+                        className="form-control-custom" 
+                        style={{ padding: '0.45rem 0.75rem', fontSize: '0.9rem' }}
+                        value={editUserData.displayName || ''} 
+                        onChange={e => setEditUserData({...editUserData, displayName: e.target.value})} 
+                        placeholder="Nhập tên hiển thị" 
+                        autoFocus
+                      />
+                    </td>
+                    <td>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-muted)' }}>
+                        @{user.username}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge-status ${user.role === 'MANAGER' ? 'badge-status-info' : 'badge-status-neutral'}`}>
+                        {user.role === 'MANAGER' ? 'Quản lý' : 'Độc giả'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge-status ${user.status === 'AVAILABLE' ? 'badge-status-success' : 'badge-status-danger'}`}>
+                        <span className="badge-dot"></span>
+                        {user.status === 'AVAILABLE' ? 'Hoạt động' : 'Bị khóa'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <button 
+                          className="btn-primary-gradient" 
+                          style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
+                          onClick={() => submitEditUser(user.id)}
+                        >
+                          <Check size={14} />
+                          <span>Lưu</span>
+                        </button>
+                        <button 
+                          className="btn-secondary-modern" 
+                          style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
+                          onClick={cancelEditUser}
+                        >
+                          <X size={14} />
+                          <span>Hủy</span>
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div 
+                          style={{ 
+                            width: '36px', 
+                            height: '36px', 
+                            borderRadius: '50%', 
+                            background: getAvatarGradient(user.displayName || user.username),
+                            color: 'white',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}
+                        >
+                          {(user.displayName || user.username || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {user.displayName || 'Chưa đặt tên'}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                        @{user.username}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge-status ${user.role === 'MANAGER' ? 'badge-status-info' : 'badge-status-neutral'}`}>
+                        {user.role === 'MANAGER' ? (
+                          <><ShieldCheck size={12} /> Quản lý</>
+                        ) : (
+                          <><UserCheck size={12} /> Độc giả</>
+                        )}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge-status ${user.status === 'AVAILABLE' ? 'badge-status-success' : 'badge-status-danger'}`}>
+                        <span className="badge-dot"></span>
+                        {user.status === 'AVAILABLE' ? 'Hoạt động' : 'Bị khóa'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <button 
+                          className="btn-action-icon btn-action-edit" 
+                          title="Sửa tên hiển thị"
+                          onClick={() => startEditUser(user)}
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                        <button 
+                          className="btn-action-icon" 
+                          style={{ background: 'var(--info-bg)', color: 'var(--info)' }}
+                          title="Đặt lại mật khẩu mặc định"
+                          onClick={() => handleResetPassword(user)}
+                        >
+                          <KeyRound size={15} />
+                        </button>
+                        <button 
+                          className="btn-action-icon" 
+                          style={{ 
+                            background: user.status === 'AVAILABLE' ? 'var(--warning-bg)' : 'var(--success-bg)', 
+                            color: user.status === 'AVAILABLE' ? 'var(--warning)' : 'var(--success)' 
+                          }}
+                          title={user.status === 'AVAILABLE' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
+                          onClick={() => handleLockUser(user)}
+                        >
+                          {user.status === 'AVAILABLE' ? <Lock size={15} /> : <Unlock size={15} />}
+                        </button>
+                        <button 
+                          className="btn-action-icon btn-action-delete" 
+                          title="Xóa người dùng"
+                          onClick={() => handleDeleteUser(user)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+
+            {filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan="6" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                    <Users size={42} style={{ opacity: 0.3 }} />
+                    <p style={{ margin: 0, fontWeight: 600 }}>Không tìm thấy người dùng phù hợp.</p>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 };
 
-export default Users;
+export default UsersComponent;

@@ -46,21 +46,21 @@ public class AuthController {
                     .orElseThrow(() -> new RuntimeException("Error: User not found."));
 
             if (user.getStatus().equals("UNAVAILABLE")) {
-                throw new UserUnavailableException("Tài khoản này đã bị khóa, vui lòng liên hệ admin để biết thêm chi tiết");
+                throw new UserUnavailableException(
+                        "Tài khoản này đã bị khóa, vui lòng liên hệ admin để biết thêm chi tiết");
             }
             String jwt = jwtUtil.generateToken(user.getUsername(), user.getRole());
 
             return ResponseEntity.ok(new JwtResponse(jwt, user.getRole(), user.getUsername(), user.getId()));
-        }
-        catch(BadCredentialsException ex) {
+        } catch (BadCredentialsException ex) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Sai mật khẩu");
-//            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
+            // return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
         }
     }
 
     @PostMapping("/register")
     public ResponseEntity<?> registerAcc(@RequestBody RegisterRequest registerRequest) {
-        if(userRepository.findByUsername(registerRequest.getUsername()).isPresent()) {
+        if (userRepository.findByUsername(registerRequest.getUsername()).isPresent()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Tài khoản đã tồn tại");
         }
         User user = new User();

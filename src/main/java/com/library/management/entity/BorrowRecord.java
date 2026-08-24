@@ -2,6 +2,7 @@ package com.library.management.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDate;
+import java.util.List;
 
 @Entity
 @Table(name = "borrow_records")
@@ -21,15 +22,15 @@ public class BorrowRecord {
     private Book book;
 
     @Column(nullable = false)
+    private int usBook; //0 là cho mượn, 1 là yêu cầu cho mượn, 2 là yêu cầu đặt trước
+
+    @Column(nullable = false)
     private LocalDate borrowDate;
 
     @Column(nullable = false)
     private LocalDate dueDate;
-
     private LocalDate returnDate;
-
     public BorrowRecord() {}
-
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public User getUser() { return user; }
@@ -42,4 +43,6 @@ public class BorrowRecord {
     public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
     public LocalDate getReturnDate() { return returnDate; }
     public void setReturnDate(LocalDate returnDate) { this.returnDate = returnDate; }
+    public int getUsBook() { return usBook; }
+    public void setUsBook(int usBook) { this.usBook = usBook; }
 }

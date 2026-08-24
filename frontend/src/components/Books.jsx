@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -14,7 +14,11 @@ import {
   X, 
   CheckCircle2, 
   AlertCircle,
-  Sparkles
+  Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 
 const Books = () => {
@@ -22,6 +26,10 @@ const Books = () => {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [categories, setCategories] = useState([]);
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
   
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -39,7 +47,7 @@ const Books = () => {
 
   const fetchBooks = async (searchTerm = '') => {
     try {
-      const response = await api.get(`/manager/books${searchTerm ? '?search=' + encodeURIComponent(searchTerm) : ''}`);
+      const response = await api.get(`/books${searchTerm ? '?search=' + encodeURIComponent(searchTerm) : ''}`);
       setBooks(response.data);
     } catch (error) {
       console.error("Error fetching books", error);
@@ -73,7 +81,7 @@ const Books = () => {
   const handleDelete = async (id, name) => {
     if (window.confirm(`Bạn có chắc chắn muốn xóa đầu sách "${name}"?`)) {
       try {
-        await api.delete(`/manager/books/${id}`);
+        await api.delete(`/books/${id}`);
         triggerSuccess(`Đã xóa sách "${name}" thành công.`);
         fetchBooks(search);
       } catch (error) {
@@ -87,7 +95,7 @@ const Books = () => {
     e.preventDefault();
     try {
       const bookData = { ...newBook, category: { id: newBook.category } };
-      await api.post('/manager/books', bookData);
+      await api.post('/books', bookData);
       setNewBook({ name: '', category: '', quantity: 1 });
       setShowAddModal(false);
       triggerSuccess('Thêm đầu sách mới thành công!');
@@ -107,7 +115,7 @@ const Books = () => {
         setBulkError('Dữ liệu JSON phải là một Mảng (Array)');
         return;
       }
-      await api.post('/manager/books/in-books', parsedData);
+      await api.post('/books/in-books', parsedData);
       setShowBulkModal(false);
       triggerSuccess(`Import thành công ${parsedData.length} đầu sách!`);
       fetchBooks(search);
@@ -131,7 +139,7 @@ const Books = () => {
     e.preventDefault();
     try {
       const bookData = { ...editBookData, category: { id: editBookData.category } };
-      await api.put(`/manager/books/update/${editBookId}`, bookData);
+      await api.put(`/books/update/${editBookId}`, bookData);
       setShowEditModal(false);
       setEditBookId(null);
       triggerSuccess('Cập nhật thông tin sách thành công!');
@@ -142,9 +150,46 @@ const Books = () => {
     }
   };
 
-  const filteredBooks = selectedCategory 
-    ? books.filter(b => b.category?.id === selectedCategory) 
-    : books;
+  const filteredBooks = useMemo(() => {
+    return selectedCategory 
+      ? books.filter(b => b.category?.id === selectedCategory) 
+      : books;
+  }, [books, selectedCategory]);
+
+  const totalPages = Math.ceil(filteredBooks.length / pageSize) || 1;
+
+  // Sliced books for instant rendering
+  const paginatedBooks = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredBooks.slice(start, start + pageSize);
+  }, [filteredBooks, currentPage, pageSize]);
+
+  // Reset to page 1 on filter/search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, search]);
+
+  const getPageNumbers = () => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const delta = 1;
+    const range = [];
+    for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+      range.push(i);
+    }
+    if (currentPage - delta > 2) {
+      range.unshift('...');
+    }
+    if (currentPage + delta < totalPages - 1) {
+      range.push('...');
+    }
+    range.unshift(1);
+    if (totalPages > 1) {
+      range.push(totalPages);
+    }
+    return range;
+  };
 
   return (
     <div className="animate-fade-in">
@@ -227,7 +272,7 @@ const Books = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredBooks.map(book => (
+            {paginatedBooks.map(book => (
               <tr key={book.id}>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
@@ -301,6 +346,84 @@ const Books = () => {
             )}
           </tbody>
         </table>
+
+        {/* Pagination Bar */}
+        {filteredBooks.length > 0 && (
+          <div className="pagination-wrapper">
+            <div className="pagination-info">
+              <span>
+                Hiển thị <span className="highlight">{Math.min((currentPage - 1) * pageSize + 1, filteredBooks.length)}</span> - <span className="highlight">{Math.min(currentPage * pageSize, filteredBooks.length)}</span> trên <span className="highlight">{filteredBooks.length}</span> đầu sách
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>/ trang:</span>
+                <select
+                  className="form-select-custom"
+                  style={{ width: 'auto', padding: '0.25rem 0.5rem', fontSize: '0.8rem', height: '32px' }}
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                >
+                  <option value={15}>15</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="pagination-controls">
+              <button
+                className="pagination-btn"
+                title="Trang đầu tiên"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(1)}
+              >
+                <ChevronsLeft size={16} />
+              </button>
+              <button
+                className="pagination-btn"
+                title="Trang trước"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {getPageNumbers().map((pageNum, idx) => (
+                pageNum === '...' ? (
+                  <span key={`ellipsis-${idx}`} className="pagination-ellipsis">...</span>
+                ) : (
+                  <button
+                    key={`page-${pageNum}`}
+                    className={`pagination-btn ${currentPage === pageNum ? 'active' : ''}`}
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </button>
+                )
+              ))}
+
+              <button
+                className="pagination-btn"
+                title="Trang tiếp"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              >
+                <ChevronRight size={16} />
+              </button>
+              <button
+                className="pagination-btn"
+                title="Trang cuối cùng"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+              >
+                <ChevronsRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal Add Book */}

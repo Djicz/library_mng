@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  BookOpen, 
-  Repeat, 
-  BellRing, 
-  Trophy, 
-  Medal, 
-  Sparkles, 
-  CheckCircle2, 
+import { Link } from 'react-router-dom';
+import {
+  Users,
+  BookOpen,
+  Repeat,
+  BellRing,
+  Trophy,
+  Medal,
+  Sparkles,
+  CheckCircle2,
   AlertCircle,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  Inbox
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -19,10 +21,12 @@ const Dashboard = () => {
   const [jobMessage, setJobMessage] = useState('');
   const [jobError, setJobError] = useState('');
   const [jobLoading, setJobLoading] = useState(false);
-  
+
   const [userCount, setUserCount] = useState(0);
   const [bookCount, setBookCount] = useState(0);
   const [borrowCount, setBorrowCount] = useState(0);
+  const [requestCount, setRequestCount] = useState(0);
+  const [reservationCount, setReservationCount] = useState(0);
   const [topBorrowers, setTopBorrowers] = useState([]);
 
   useEffect(() => {
@@ -34,22 +38,30 @@ const Dashboard = () => {
         console.error("Error fetching dashboard", error);
       }
     };
-    
+
     const fetchStats = async () => {
       try {
-        const [userRes, bookRes, borrowRes] = await Promise.all([
+        const [userRes, bookRes, borrowRes, reqRes, bookReqRes, endReqRes] = await Promise.all([
           api.get('/manager/dashboard/user-count'),
           api.get('/manager/dashboard/book-count'),
-          api.get('/manager/dashboard/borrow-count')
+          api.get('/manager/dashboard/borrow-count'),
+          api.get('/manager/request').catch(() => ({ data: [] })),
+          api.get('/manager/request/book').catch(() => ({ data: [] })),
+          api.get('/manager/request/end').catch(() => ({ data: [] }))
         ]);
-        
+
         setUserCount(userRes.data || 0);
         setBookCount(bookRes.data || 0);
         
+        const totalPending = (Array.isArray(reqRes.data) ? reqRes.data.length : 0) +
+                             (Array.isArray(bookReqRes.data) ? bookReqRes.data.length : 0) +
+                             (Array.isArray(endReqRes.data) ? endReqRes.data.length : 0);
+        setRequestCount(totalPending);
+
         if (Array.isArray(borrowRes.data)) {
           const total = borrowRes.data.reduce((acc, curr) => acc + (curr.count || 0), 0);
           setBorrowCount(total);
-          
+
           const filteredBorrowers = borrowRes.data.filter(u => u.username !== 'admin');
           setTopBorrowers(filteredBorrowers.slice(0, 10));
         }
@@ -57,7 +69,7 @@ const Dashboard = () => {
         console.error("Error fetching stats", error);
       }
     };
-    
+
     fetchDashboard();
     fetchStats();
   }, []);
@@ -105,14 +117,14 @@ const Dashboard = () => {
           </p>
         </div>
         <div style={{ position: 'relative', zIndex: 2 }}>
-          <button 
-            onClick={triggerJob} 
+          <button
+            onClick={triggerJob}
             disabled={jobLoading}
             className="btn-secondary-modern"
-            style={{ 
-              padding: '0.85rem 1.5rem', 
-              borderRadius: 'var(--radius-lg)', 
-              fontWeight: 700, 
+            style={{
+              padding: '0.85rem 1.5rem',
+              borderRadius: 'var(--radius-lg)',
+              fontWeight: 700,
               color: 'var(--primary-dark)',
               boxShadow: 'var(--shadow-md)'
             }}
@@ -138,7 +150,7 @@ const Dashboard = () => {
       )}
 
       {/* Stat Cards */}
-      <div className="stat-grid">
+      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
         <div className="stat-card-modern">
           <div className="stat-icon-wrapper" style={{ background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15))', color: 'var(--primary)' }}>
             <Users size={28} />
@@ -168,6 +180,18 @@ const Dashboard = () => {
             <div className="stat-value">{borrowCount}</div>
           </div>
         </div>
+
+        <Link to="/manager/requests" className="stat-card-modern" style={{ textDecoration: 'none', cursor: 'pointer' }}>
+          <div className="stat-icon-wrapper" style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.15))', color: 'var(--warning)' }}>
+            <Inbox size={28} />
+          </div>
+          <div>
+            <div className="stat-label">Yêu Cầu Chờ Duyệt</div>
+            <div className="stat-value" style={{ color: requestCount > 0 ? 'var(--warning)' : undefined }}>
+              {requestCount}
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* Leaderboard */}
@@ -195,7 +219,7 @@ const Dashboard = () => {
           <table className="table-modern">
             <thead>
               <tr>
-                <th style={{ width: '120px' }}>Thứ Hạng</th>
+                <th style={{ width: '140px', whiteSpace: 'nowrap' }}>Thứ Hạng</th>
                 <th>Độc Giả</th>
                 <th>Tài Khoản</th>
                 <th style={{ width: '180px', textAlign: 'right' }}>Số Sách Đã Mượn</th>
@@ -211,30 +235,82 @@ const Dashboard = () => {
                   <tr key={user.username}>
                     <td>
                       {isFirst ? (
-                        <span className="badge-status" style={{ background: 'linear-gradient(135deg, #fef3c7, #fde68a)', color: '#b45309', border: '1px solid #fcd34d', fontWeight: 800 }}>
-                          🥇 #1 Gold
+                        <span
+                          className="badge-status"
+                          style={{
+                            background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+                            color: '#b45309',
+                            border: '1px solid #fcd34d',
+                            fontWeight: 800,
+                            whiteSpace: 'nowrap',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.35rem 0.75rem'
+                          }}
+                        >
+                          <Trophy size={14} style={{ color: '#d97706', flexShrink: 0 }} />
+                          <span>#1 Gold</span>
                         </span>
                       ) : isSecond ? (
-                        <span className="badge-status" style={{ background: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 800 }}>
-                          🥈 #2 Silver
+                        <span
+                          className="badge-status"
+                          style={{
+                            background: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)',
+                            color: '#475569',
+                            border: '1px solid #cbd5e1',
+                            fontWeight: 800,
+                            whiteSpace: 'nowrap',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.35rem 0.75rem'
+                          }}
+                        >
+                          <Medal size={14} style={{ color: '#64748b', flexShrink: 0 }} />
+                          <span>#2 Silver</span>
                         </span>
                       ) : isThird ? (
-                        <span className="badge-status" style={{ background: 'linear-gradient(135deg, #ffedd5, #fed7aa)', color: '#c2410c', border: '1px solid #fdba74', fontWeight: 800 }}>
-                          🥉 #3 Bronze
+                        <span
+                          className="badge-status"
+                          style={{
+                            background: 'linear-gradient(135deg, #ffedd5, #fed7aa)',
+                            color: '#c2410c',
+                            border: '1px solid #fdba74',
+                            fontWeight: 800,
+                            whiteSpace: 'nowrap',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.35rem 0.75rem'
+                          }}
+                        >
+                          <Medal size={14} style={{ color: '#ea580c', flexShrink: 0 }} />
+                          <span>#3 Bronze</span>
                         </span>
                       ) : (
-                        <span className="badge-status badge-status-neutral" style={{ fontWeight: 700 }}>
+                        <span
+                          className="badge-status badge-status-neutral"
+                          style={{
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            minWidth: '42px'
+                          }}
+                        >
                           #{index + 1}
                         </span>
                       )}
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <div 
-                          style={{ 
-                            width: '34px', 
-                            height: '34px', 
-                            borderRadius: '50%', 
+                        <div
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '50%',
                             background: getAvatarGradient(user.displayName || user.username),
                             color: 'white',
                             fontWeight: 700,

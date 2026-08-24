@@ -6,6 +6,7 @@ import com.library.management.service.BorrowService;
 import com.library.management.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.parameters.P;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,7 +29,7 @@ public class ManagerBorrowController {
         if(search != null && search.length() != 0) {
             return ResponseEntity.ok(borrowService.searchBorrow(search));
         }
-        return ResponseEntity.ok(borrowService.getAllBorrowRecords());
+        return ResponseEntity.ok(borrowService.getZBorrowRecords());
     }
 
     @PostMapping("/assign")
@@ -56,7 +57,17 @@ public class ManagerBorrowController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
-    
+
+    @PutMapping("/approve/{id}")
+    public ResponseEntity<?> approveRequest(@PathVariable Long id) {
+        return ResponseEntity.ok(borrowService.approveRequest(id));
+    }
+
+    @PutMapping("/don/{id}")
+    public ResponseEntity<?> doneRequest(@PathVariable Long id) {
+        return ResponseEntity.ok(borrowService.doneRequest(id));
+    }
+
     @PostMapping("/return/{recordId}")
     public ResponseEntity<?> returnBook(@PathVariable Long recordId) {
         borrowService.returnBook(recordId);

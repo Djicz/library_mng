@@ -6,11 +6,14 @@ import Users from './components/Users';
 import Categories from './components/Categories';
 import Books from './components/Books';
 import Borrows from './components/Borrows';
+import Requests from './components/Requests';
+import Reservations from './components/Reservations';
+import BorrowerBooks from './components/BorrowerBooks';
 import MyBooks from './components/MyBooks';
 import Notifications from './components/Notifications';
 import Navigation from './components/Navigation';
 import Profile from './components/Profile';
-import { Sparkles, Calendar } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const TopNavbar = () => {
@@ -19,10 +22,13 @@ const TopNavbar = () => {
 
   const getPageTitle = () => {
     if (path.includes('/dashboard')) return 'Tổng quan Hệ Thống';
+    if (path.includes('/requests')) return 'Yêu Cầu Mượn Sách';
+    if (path.includes('/reservations')) return 'Quản lý Đặt Trước Sách';
     if (path.includes('/users')) return 'Quản lý Người Dùng';
     if (path.includes('/categories')) return 'Quản lý Thể Loại Sách';
-    if (path.includes('/books')) return 'Quản lý Đầu Sách';
+    if (path === '/manager/books') return 'Quản lý Đầu Sách';
     if (path.includes('/borrows')) return 'Quản lý Mượn / Trả Sách';
+    if (path === '/borrower/books') return 'Kho Sách & Mượn Sách';
     if (path.includes('/my-books')) return 'Sách Đang Mượn Của Tôi';
     if (path.includes('/notifications')) return 'Hộp Thư Thông Báo';
     if (path.includes('/profile')) return 'Hồ Sơ Tài Khoản';
@@ -77,12 +83,21 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         
+        {/* Manager Routes */}
         <Route path="/manager/dashboard" element={
           <PrivateRoute roleRequired="MANAGER">
             <Dashboard />
           </PrivateRoute>
         } />
         
+        <Route path="/manager/requests" element={
+          <PrivateRoute roleRequired="MANAGER">
+            <Requests />
+          </PrivateRoute>
+        } />
+
+        <Route path="/manager/reservations" element={<Navigate to="/manager/requests" />} />
+
         <Route path="/manager/users" element={
           <PrivateRoute roleRequired="MANAGER">
             <Users />
@@ -107,6 +122,13 @@ function App() {
           </PrivateRoute>
         } />
 
+        {/* Borrower Routes */}
+        <Route path="/borrower/books" element={
+          <PrivateRoute roleRequired="BORROWER">
+            <BorrowerBooks />
+          </PrivateRoute>
+        } />
+
         <Route path="/borrower/my-books" element={
           <PrivateRoute roleRequired="BORROWER">
             <MyBooks />
@@ -119,6 +141,7 @@ function App() {
           </PrivateRoute>
         } />
 
+        {/* Shared Profile */}
         <Route path="/profile" element={
           <PrivateRoute>
             <Profile />

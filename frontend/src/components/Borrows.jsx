@@ -26,41 +26,149 @@ const Borrows = () => {
   const [books, setBooks] = useState([]);
   const [actionSuccess, setActionSuccess] = useState('');
 
+  // Autocomplete states
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [bookSearchTerm, setBookSearchTerm] = useState('');
+  const [userOptions, setUserOptions] = useState([]);
+  const [bookOptions, setBookOptions] = useState([]);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [showBookDropdown, setShowBookDropdown] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedBook, setSelectedBook] = useState(null);
+  const userDropdownRef = React.useRef(null);
+  const bookDropdownRef = React.useRef(null);
+
   const location = useLocation();
 
   const fetchRecords = async (query = '') => {
     try {
-      const url = query ? `/manager/borrows?search=${encodeURIComponent(query)}` : '/manager/borrows';
+      const cleanQuery = (query || '').trim().replace(/^@/, '');
+      const url = cleanQuery ? `/manager/borrows?search=${encodeURIComponent(cleanQuery)}` : '/manager/borrows';
       const response = await api.get(url);
-      setRecords(response.data);
+      setRecords(response.data || []);
     } catch (error) {
       console.error("Error fetching records", error);
     }
   };
 
+  // Initial load for records and modal options
   useEffect(() => {
     fetchRecords();
     const fetchUsersAndBooks = async () => {
       try {
         const [usersRes, booksRes] = await Promise.all([
           api.get('/manager/user/get-all-users'),
-          api.get('/manager/books')
+          api.get('/books')
         ]);
-        setUsers(usersRes.data);
-        setBooks(booksRes.data);
+        setUsers(usersRes.data || []);
+        setBooks(booksRes.data || []);
       } catch (error) {
         console.error("Error fetching users or books", error);
       }
     };
     fetchUsersAndBooks();
+  }, []);
 
+  // Handle URL query parameter assignBookId
+  useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     const bookId = queryParams.get('assignBookId');
-    if (bookId) {
+    if (bookId && books.length > 0) {
       setShowAssignModal(true);
       setAssignData(prev => ({ ...prev, bookId }));
+      const found = books.find(b => b.id === bookId);
+      if (found) {
+        setSelectedBook(found);
+        setBookSearchTerm(found.name);
+      }
     }
-  }, [location]);
+  }, [location.search, books]);
+
+  // Debounced auto-search when typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchRecords(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) setShowUserDropdown(false);
+      if (bookDropdownRef.current && !bookDropdownRef.current.contains(event.target)) setShowBookDropdown(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Filter and Fetch users on search term change
+  useEffect(() => {
+    // 1. Instant local filter
+    const term = userSearchTerm.trim().toLowerCase();
+    const localFiltered = users.filter(u => {
+      if (u.role === 'MANAGER' || u.status !== 'AVAILABLE') return false;
+      if (!term) return true;
+      const uName = (u.username || '').toLowerCase();
+      const dName = (u.displayName || '').toLowerCase();
+      return uName.includes(term) || dName.includes(term);
+    });
+    setUserOptions(localFiltered);
+
+    // 2. Debounced API search for server sync
+    const fetchUsersDebounced = async () => {
+      try {
+        const response = await api.get('/manager/user/get-user-by-name', { params: { name: userSearchTerm.trim() } });
+        const validUsers = (response.data || []).filter(u => u.role !== 'MANAGER' && u.status === 'AVAILABLE');
+        setUserOptions(validUsers);
+      } catch (error) {
+        console.error("Error searching users", error);
+      }
+    };
+    const timer = setTimeout(fetchUsersDebounced, 250);
+    return () => clearTimeout(timer);
+  }, [userSearchTerm, users]);
+
+  // Filter and Fetch books on search term change
+  useEffect(() => {
+    // 1. Instant local filter
+    const term = bookSearchTerm.trim().toLowerCase();
+    const localFiltered = books.filter(b => {
+      if (b.quantity <= 0 && b.id !== assignData.bookId) return false;
+      if (!term) return true;
+      const bName = (b.name || '').toLowerCase();
+      const cName = (b.category?.name || '').toLowerCase();
+      return bName.includes(term) || cName.includes(term);
+    });
+    setBookOptions(localFiltered);
+
+    // 2. Debounced API search for server sync
+    const fetchBooksDebounced = async () => {
+      try {
+        const response = await api.get('/books/search', { params: { name: bookSearchTerm.trim() } });
+        const validBooks = (response.data || []).filter(b => b.quantity > 0 || b.id === assignData.bookId);
+        setBookOptions(validBooks);
+      } catch (error) {
+        console.error("Error searching books", error);
+      }
+    };
+    const timer = setTimeout(fetchBooksDebounced, 250);
+    return () => clearTimeout(timer);
+  }, [bookSearchTerm, books, assignData.bookId]);
+
+  const handleSelectUser = (user) => {
+    setSelectedUser(user);
+    setAssignData(prev => ({ ...prev, username: user.username }));
+    setUserSearchTerm(user.displayName ? `${user.displayName} (@${user.username})` : user.username);
+    setShowUserDropdown(false);
+  };
+
+  const handleSelectBook = (book) => {
+    setSelectedBook(book);
+    setAssignData(prev => ({ ...prev, bookId: book.id }));
+    setBookSearchTerm(book.name);
+    setShowBookDropdown(false);
+  };
 
   const triggerSuccess = (msg) => {
     setActionSuccess(msg);
@@ -86,6 +194,10 @@ const Borrows = () => {
     try {
       await api.post('/manager/borrows/assign', assignData);
       setAssignData({ username: '', bookId: '', dueDate: '' });
+      setUserSearchTerm('');
+      setBookSearchTerm('');
+      setSelectedUser(null);
+      setSelectedBook(null);
       setShowAssignModal(false);
       triggerSuccess('Tạo phiếu mượn sách thành công!');
       fetchRecords(searchTerm);
@@ -172,20 +284,39 @@ const Borrows = () => {
 
       {/* Search Bar */}
       <div className="card-glass mb-4" style={{ padding: '1rem 1.25rem' }}>
-        <div className="search-input-group" style={{ maxWidth: '100%' }}>
+        <div className="search-input-group" style={{ maxWidth: '100%', position: 'relative' }}>
           <Search size={18} className="search-icon-inside" />
           <input
             type="text"
             className="search-input-field"
-            placeholder="Tìm kiếm theo tên sách hoặc tài khoản độc giả (Nhấn Enter để lọc)..."
+            placeholder="Tìm kiếm theo tài khoản độc giả (ví dụ: testuser, @testuser)..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                fetchRecords(searchTerm);
-              }
-            }}
+            style={{ paddingRight: searchTerm ? '2.5rem' : '1rem' }}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px'
+              }}
+              title="Xóa tìm kiếm"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -316,38 +447,182 @@ const Borrows = () => {
                   </div>
                 )}
 
-                <div className="form-group-custom">
-                  <label className="form-label-custom">Độc Giả Mượn Sách <span style={{ color: 'var(--danger)' }}>*</span></label>
-                  <select 
-                    className="form-select-custom" 
-                    value={assignData.username} 
-                    onChange={e => setAssignData({ ...assignData, username: e.target.value })} 
-                    required
-                  >
-                    <option value="">-- Chọn tài khoản độc giả --</option>
-                    {users.filter(user => user.role !== 'MANAGER' && user.status === 'AVAILABLE').map(user => (
-                      <option key={user.id} value={user.username}>
-                        {user.displayName ? `${user.displayName} (@${user.username})` : user.username}
-                      </option>
-                    ))}
-                  </select>
+                {/* Reader Autocomplete Field */}
+                <div className="form-group-custom" ref={userDropdownRef}>
+                  <label className="form-label-custom">
+                    Độc Giả Mượn Sách <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  
+                  <div className="autocomplete-wrapper">
+                    <div className="autocomplete-input-box">
+                      <User size={17} className="input-icon-left" />
+                      <input
+                        type="text"
+                        className="form-control-custom"
+                        placeholder="Gõ tên hoặc username độc giả..."
+                        value={userSearchTerm}
+                        onChange={(e) => {
+                          setUserSearchTerm(e.target.value);
+                          setShowUserDropdown(true);
+                          if (selectedUser && e.target.value !== (selectedUser.displayName || selectedUser.username)) {
+                            setSelectedUser(null);
+                            setAssignData(prev => ({ ...prev, username: '' }));
+                          }
+                        }}
+                        onFocus={() => setShowUserDropdown(true)}
+                        required={!assignData.username}
+                      />
+                      {userSearchTerm && (
+                        <button 
+                          type="button" 
+                          className="btn-clear-input"
+                          onClick={() => {
+                            setUserSearchTerm('');
+                            setSelectedUser(null);
+                            setAssignData(prev => ({ ...prev, username: '' }));
+                            setShowUserDropdown(true);
+                          }}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    {showUserDropdown && (
+                      <div className="autocomplete-dropdown">
+                        {userOptions.length > 0 ? (
+                          userOptions.map(user => {
+                            const isSelected = assignData.username === user.username;
+                            const initial = (user.displayName || user.username || 'U').charAt(0).toUpperCase();
+                            return (
+                              <div 
+                                key={user.id} 
+                                className={`autocomplete-item ${isSelected ? 'selected' : ''}`}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleSelectUser(user);
+                                }}
+                                onClick={() => handleSelectUser(user)}
+                              >
+                                <div className="autocomplete-item-main">
+                                  <div className="autocomplete-avatar">
+                                    {initial}
+                                  </div>
+                                  <div className="autocomplete-item-text">
+                                    <span className="autocomplete-title">
+                                      {user.displayName || user.username}
+                                    </span>
+                                    <span className="autocomplete-subtitle">
+                                      @{user.username}
+                                    </span>
+                                  </div>
+                                </div>
+                                {isSelected && (
+                                  <CheckCircle2 size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="autocomplete-empty">
+                            <User size={24} style={{ opacity: 0.3 }} />
+                            <span>Không tìm thấy độc giả phù hợp</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="form-group-custom">
-                  <label className="form-label-custom">Đầu Sách <span style={{ color: 'var(--danger)' }}>*</span></label>
-                  <select 
-                    className="form-select-custom" 
-                    value={assignData.bookId} 
-                    onChange={e => setAssignData({ ...assignData, bookId: e.target.value })} 
-                    required
-                  >
-                    <option value="">-- Chọn đầu sách --</option>
-                    {books.filter(book => book.quantity > 0 || book.id === assignData.bookId).map(book => (
-                      <option key={book.id} value={book.id}>
-                        {book.name} (Tồn kho: {book.quantity})
-                      </option>
-                    ))}
-                  </select>
+                {/* Book Autocomplete Field */}
+                <div className="form-group-custom" ref={bookDropdownRef}>
+                  <label className="form-label-custom">
+                    Đầu Sách <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  
+                  <div className="autocomplete-wrapper">
+                    <div className="autocomplete-input-box">
+                      <BookOpen size={17} className="input-icon-left" />
+                      <input
+                        type="text"
+                        className="form-control-custom"
+                        placeholder="Gõ tên đầu sách hoặc thể loại..."
+                        value={bookSearchTerm}
+                        onChange={(e) => {
+                          setBookSearchTerm(e.target.value);
+                          setShowBookDropdown(true);
+                          if (selectedBook && e.target.value !== selectedBook.name) {
+                            setSelectedBook(null);
+                            setAssignData(prev => ({ ...prev, bookId: '' }));
+                          }
+                        }}
+                        onFocus={() => setShowBookDropdown(true)}
+                        required={!assignData.bookId}
+                      />
+                      {bookSearchTerm && (
+                        <button 
+                          type="button" 
+                          className="btn-clear-input"
+                          onClick={() => {
+                            setBookSearchTerm('');
+                            setSelectedBook(null);
+                            setAssignData(prev => ({ ...prev, bookId: '' }));
+                            setShowBookDropdown(true);
+                          }}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    {showBookDropdown && (
+                      <div className="autocomplete-dropdown">
+                        {bookOptions.length > 0 ? (
+                          bookOptions.map(book => {
+                            const isSelected = assignData.bookId === book.id;
+                            return (
+                              <div 
+                                key={book.id} 
+                                className={`autocomplete-item ${isSelected ? 'selected' : ''}`}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleSelectBook(book);
+                                }}
+                                onClick={() => handleSelectBook(book)}
+                              >
+                                <div className="autocomplete-item-main">
+                                  <div className="autocomplete-book-icon">
+                                    <BookOpen size={16} />
+                                  </div>
+                                  <div className="autocomplete-item-text">
+                                    <span className="autocomplete-title">
+                                      {book.name}
+                                    </span>
+                                    <span className="autocomplete-subtitle">
+                                      {book.category?.name ? `Thể loại: ${book.category.name}` : 'Chưa phân loại'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                                  <span className="badge-status badge-status-success" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
+                                    Kho: {book.quantity}
+                                  </span>
+                                  {isSelected && (
+                                    <CheckCircle2 size={16} style={{ color: 'var(--primary)' }} />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="autocomplete-empty">
+                            <BookOpen size={24} style={{ opacity: 0.3 }} />
+                            <span>Không tìm thấy sách phù hợp</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="form-group-custom">

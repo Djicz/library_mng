@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { 
-  Users, 
-  UserCheck, 
-  ShieldCheck, 
-  Lock, 
-  Unlock, 
-  KeyRound, 
-  Edit3, 
-  Trash2, 
-  Check, 
-  X, 
+import {
+  Users,
+  UserCheck,
+  ShieldCheck,
+  Lock,
+  Unlock,
+  KeyRound,
+  Edit3,
+  Trash2,
+  Check,
+  X,
   Search,
   CheckCircle2,
   AlertCircle
@@ -51,7 +51,7 @@ const UsersComponent = () => {
         await api.put(`/manager/user/lock/${user.id}`);
         triggerSuccess(`Đã ${actionText} tài khoản "${user.username}" thành công.`);
         fetchUsers();
-      } catch(error) {
+      } catch (error) {
         alert('Lỗi khi thay đổi trạng thái tài khoản.');
       }
     }
@@ -62,7 +62,7 @@ const UsersComponent = () => {
       try {
         const response = await api.put(`/manager/user/reset-password/${user.id}`);
         triggerSuccess(typeof response.data === 'string' ? response.data : 'Reset mật khẩu thành công!');
-      } catch(error) {
+      } catch (error) {
         alert('Lỗi reset mật khẩu.');
       }
     }
@@ -74,7 +74,7 @@ const UsersComponent = () => {
         await api.delete(`/manager/user/delete/${user.id}`);
         triggerSuccess(`Đã xóa người dùng "${user.username}" thành công.`);
         fetchUsers();
-      } catch(error) {
+      } catch (error) {
         alert('Lỗi khi xóa người dùng.');
       }
     }
@@ -84,7 +84,7 @@ const UsersComponent = () => {
     setEditUserId(user.id);
     setEditUserData({ ...user });
   };
-  
+
   const cancelEditUser = () => {
     setEditUserId(null);
     setEditUserData({});
@@ -96,7 +96,7 @@ const UsersComponent = () => {
       setEditUserId(null);
       triggerSuccess('Cập nhật thông tin người dùng thành công!');
       fetchUsers();
-    } catch(error) {
+    } catch (error) {
       alert('Lỗi cập nhật người dùng.');
     }
   };
@@ -117,7 +117,7 @@ const UsersComponent = () => {
   };
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = !search || 
+    const matchesSearch = !search ||
       (user.username && user.username.toLowerCase().includes(search.toLowerCase())) ||
       (user.displayName && user.displayName.toLowerCase().includes(search.toLowerCase()));
     const matchesRole = !roleFilter || user.role === roleFilter;
@@ -149,18 +149,18 @@ const UsersComponent = () => {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
           <div className="search-input-group">
             <Search size={18} className="search-icon-inside" />
-            <input 
-              type="text" 
-              className="search-input-field" 
-              placeholder="Tìm kiếm tài khoản, tên..." 
-              value={search} 
-              onChange={e => setSearch(e.target.value)} 
+            <input
+              type="text"
+              className="search-input-field"
+              placeholder="Tìm kiếm tài khoản, tên..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
             />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <select 
-              className="form-select-custom" 
+            <select
+              className="form-select-custom"
               style={{ width: 'auto', minWidth: '150px', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
               value={roleFilter}
               onChange={e => setRoleFilter(e.target.value)}
@@ -170,8 +170,8 @@ const UsersComponent = () => {
               <option value="BORROWER">Độc giả</option>
             </select>
 
-            <select 
-              className="form-select-custom" 
+            <select
+              className="form-select-custom"
               style={{ width: 'auto', minWidth: '150px', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
@@ -205,17 +205,17 @@ const UsersComponent = () => {
                     #{user.id ? user.id.substring(0, 6) : 'N/A'}
                   </span>
                 </td>
-                
+
                 {editUserId === user.id ? (
                   <>
                     <td>
-                      <input 
-                        type="text" 
-                        className="form-control-custom" 
+                      <input
+                        type="text"
+                        className="form-control-custom"
                         style={{ padding: '0.45rem 0.75rem', fontSize: '0.9rem' }}
-                        value={editUserData.displayName || ''} 
-                        onChange={e => setEditUserData({...editUserData, displayName: e.target.value})} 
-                        placeholder="Nhập tên hiển thị" 
+                        value={editUserData.displayName || ''}
+                        onChange={e => setEditUserData({ ...editUserData, displayName: e.target.value })}
+                        placeholder="Nhập tên hiển thị"
                         autoFocus
                       />
                     </td>
@@ -237,16 +237,16 @@ const UsersComponent = () => {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <button 
-                          className="btn-primary-gradient" 
+                        <button
+                          className="btn-primary-gradient"
                           style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
                           onClick={() => submitEditUser(user.id)}
                         >
                           <Check size={14} />
                           <span>Lưu</span>
                         </button>
-                        <button 
-                          className="btn-secondary-modern" 
+                        <button
+                          className="btn-secondary-modern"
                           style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
                           onClick={cancelEditUser}
                         >
@@ -260,11 +260,11 @@ const UsersComponent = () => {
                   <>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <div 
-                          style={{ 
-                            width: '36px', 
-                            height: '36px', 
-                            borderRadius: '50%', 
+                        <div
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '50%',
                             background: getAvatarGradient(user.displayName || user.username),
                             color: 'white',
                             fontWeight: 700,
@@ -306,34 +306,34 @@ const UsersComponent = () => {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <button 
-                          className="btn-action-icon btn-action-edit" 
+                        <button
+                          className="btn-action-icon btn-action-edit"
                           title="Sửa tên hiển thị"
                           onClick={() => startEditUser(user)}
                         >
                           <Edit3 size={15} />
                         </button>
-                        <button 
-                          className="btn-action-icon" 
+                        <button
+                          className="btn-action-icon"
                           style={{ background: 'var(--info-bg)', color: 'var(--info)' }}
                           title="Đặt lại mật khẩu mặc định"
                           onClick={() => handleResetPassword(user)}
                         >
                           <KeyRound size={15} />
                         </button>
-                        <button 
-                          className="btn-action-icon" 
-                          style={{ 
-                            background: user.status === 'AVAILABLE' ? 'var(--warning-bg)' : 'var(--success-bg)', 
-                            color: user.status === 'AVAILABLE' ? 'var(--warning)' : 'var(--success)' 
+                        <button
+                          className="btn-action-icon"
+                          style={{
+                            background: user.status === 'AVAILABLE' ? 'var(--warning-bg)' : 'var(--success-bg)',
+                            color: user.status === 'AVAILABLE' ? 'var(--warning)' : 'var(--success)'
                           }}
                           title={user.status === 'AVAILABLE' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
                           onClick={() => handleLockUser(user)}
                         >
                           {user.status === 'AVAILABLE' ? <Lock size={15} /> : <Unlock size={15} />}
                         </button>
-                        <button 
-                          className="btn-action-icon btn-action-delete" 
+                        <button
+                          className="btn-action-icon btn-action-delete"
                           title="Xóa người dùng"
                           onClick={() => handleDeleteUser(user)}
                         >

@@ -11,7 +11,8 @@ import {
   LogOut, 
   Library,
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  Inbox
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -25,6 +26,8 @@ const Navigation = () => {
     role: localStorage.getItem('role') || '',
     displayName: localStorage.getItem('username') || 'Người dùng'
   });
+
+  const [pendingTotalCount, setPendingTotalCount] = useState(0);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -41,8 +44,32 @@ const Navigation = () => {
         console.error("Error fetching profile for navigation", err);
       }
     };
+
     fetchProfile();
   }, []);
+
+  useEffect(() => {
+    // If manager, fetch total pending count from RequestController APIs
+    if (profile.role === 'MANAGER') {
+      const fetchCounts = async () => {
+        try {
+          const [reqRes, bookRes, endRes] = await Promise.all([
+            api.get('/manager/request').catch(() => ({ data: [] })),
+            api.get('/manager/request/book').catch(() => ({ data: [] })),
+            api.get('/manager/request/end').catch(() => ({ data: [] }))
+          ]);
+
+          const total = (Array.isArray(reqRes.data) ? reqRes.data.length : 0) +
+                        (Array.isArray(bookRes.data) ? bookRes.data.length : 0) +
+                        (Array.isArray(endRes.data) ? endRes.data.length : 0);
+          setPendingTotalCount(total);
+        } catch (err) {
+          // Ignore
+        }
+      };
+      fetchCounts();
+    }
+  }, [profile.role, currentPath]);
 
   const handleLogout = () => {
     localStorage.clear();
@@ -78,6 +105,35 @@ const Navigation = () => {
                 <div className="nav-icon"><LayoutDashboard size={20} /></div>
                 <span>Tổng quan</span>
               </Link>
+
+              <Link 
+                className={`nav-link-item ${currentPath.includes('/requests') ? 'active' : ''}`} 
+                to="/manager/requests"
+              >
+                <div className="nav-icon" style={{ position: 'relative' }}>
+                  <Inbox size={20} />
+                  {pendingTotalCount > 0 && (
+                    <span 
+                      style={{ 
+                        position: 'absolute', 
+                        top: '-4px', 
+                        right: '-6px', 
+                        background: 'var(--warning)', 
+                        color: '#0f172a', 
+                        fontSize: '0.65rem', 
+                        fontWeight: 800, 
+                        borderRadius: '10px', 
+                        padding: '1px 5px',
+                        lineHeight: 1
+                      }}
+                    >
+                      {pendingTotalCount}
+                    </span>
+                  )}
+                </div>
+                <span>Yêu Cầu Mượn</span>
+              </Link>
+
               <Link 
                 className={`nav-link-item ${currentPath.includes('/users') ? 'active' : ''}`} 
                 to="/manager/users"
@@ -85,6 +141,7 @@ const Navigation = () => {
                 <div className="nav-icon"><Users size={20} /></div>
                 <span>Quản lý Người dùng</span>
               </Link>
+
               <Link 
                 className={`nav-link-item ${currentPath.includes('/categories') ? 'active' : ''}`} 
                 to="/manager/categories"
@@ -92,13 +149,15 @@ const Navigation = () => {
                 <div className="nav-icon"><FolderTree size={20} /></div>
                 <span>Quản lý Thể loại</span>
               </Link>
+
               <Link 
-                className={`nav-link-item ${currentPath.includes('/books') ? 'active' : ''}`} 
+                className={`nav-link-item ${currentPath === '/manager/books' ? 'active' : ''}`} 
                 to="/manager/books"
               >
                 <div className="nav-icon"><BookOpen size={20} /></div>
                 <span>Quản lý Đầu Sách</span>
               </Link>
+
               <Link 
                 className={`nav-link-item ${currentPath.includes('/borrows') ? 'active' : ''}`} 
                 to="/manager/borrows"
@@ -110,18 +169,25 @@ const Navigation = () => {
           ) : (
             <>
               <Link 
+                className={`nav-link-item ${currentPath === '/borrower/books' ? 'active' : ''}`} 
+                to="/borrower/books"
+              >
+                <div className="nav-icon"><BookOpen size={20} /></div>
+                <span>Kho Sách & Mượn Sách</span>
+              </Link>
+              <Link 
                 className={`nav-link-item ${currentPath.includes('/my-books') ? 'active' : ''}`} 
                 to="/borrower/my-books"
               >
                 <div className="nav-icon"><BookmarkCheck size={20} /></div>
-                <span>Sách của tôi</span>
+                <span>Sách Của Tôi</span>
               </Link>
               <Link 
                 className={`nav-link-item ${currentPath.includes('/notifications') ? 'active' : ''}`} 
                 to="/borrower/notifications"
               >
                 <div className="nav-icon"><Bell size={20} /></div>
-                <span>Thông báo</span>
+                <span>Thông Báo</span>
               </Link>
             </>
           )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Library, User, Lock, UserCheck, ArrowRight, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
@@ -12,79 +12,6 @@ const Login = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '937462706342-e422qsajvlgonm5oeeu43k2964kifi2d.apps.googleusercontent.com';
-
-  const handleGoogleSuccess = async (response) => {
-    setError('');
-    setSuccessMsg('');
-    setLoading(true);
-    try {
-      const res = await axios.post('http://localhost:8080/api/auth/google', {
-        idToken: response.credential
-      });
-
-      const { token, role, username: resUsername } = res.data;
-      localStorage.setItem('token', token);
-      localStorage.setItem('role', role);
-      localStorage.setItem('username', resUsername);
-
-      if (role === 'MANAGER') {
-        navigate('/manager/dashboard');
-      } else {
-        navigate('/borrower/my-books');
-      }
-    } catch (err) {
-      const backendMessage = err.response?.data?.message || err.response?.data;
-      if (typeof backendMessage === 'string' && backendMessage.trim() !== '') {
-        setError(backendMessage);
-      } else {
-        setError('Đăng nhập bằng tài khoản Google thất bại.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const initializeGoogleSignIn = () => {
-      if (window.google?.accounts?.id && googleClientId) {
-        try {
-          window.google.accounts.id.initialize({
-            client_id: googleClientId,
-            callback: handleGoogleSuccess
-          });
-
-          const btnContainer = document.getElementById('google-signin-btn');
-          if (btnContainer) {
-            btnContainer.innerHTML = '';
-            window.google.accounts.id.renderButton(btnContainer, {
-              theme: 'filled_black',
-              size: 'large',
-              shape: 'pill',
-              width: 320,
-              text: isLogin ? 'signin_with' : 'signup_with',
-              locale: 'vi'
-            });
-          }
-        } catch (e) {
-          console.error('Google Sign-In initialization failed:', e);
-        }
-      }
-    };
-
-    if (window.google?.accounts?.id) {
-      initializeGoogleSignIn();
-    } else {
-      const timer = setInterval(() => {
-        if (window.google?.accounts?.id) {
-          initializeGoogleSignIn();
-          clearInterval(timer);
-        }
-      }, 300);
-      return () => clearInterval(timer);
-    }
-  }, [isLogin, googleClientId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -220,7 +147,7 @@ const Login = () => {
           )}
 
           <div className="form-group-custom">
-            <label className="form-label-custom">Tên Đăng Nhập / Email</label>
+            <label className="form-label-custom">Tên Đăng Nhập</label>
             <div style={{ position: 'relative' }}>
               <User size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input 
@@ -230,7 +157,7 @@ const Login = () => {
                 value={username} 
                 onChange={e => setUsername(e.target.value)} 
                 required 
-                placeholder="Nhập tên đăng nhập hoặc email"
+                placeholder="Nhập tên đăng nhập"
               />
             </div>
           </div>
@@ -268,26 +195,7 @@ const Login = () => {
           </button>
         </form>
 
-        <div className="auth-divider" style={{
-          display: 'flex',
-          alignItems: 'center',
-          textAlign: 'center',
-          margin: '1.5rem 0 1.25rem 0',
-          color: 'var(--text-muted)',
-          fontSize: '0.75rem',
-          fontWeight: 700,
-          letterSpacing: '0.08em'
-        }}>
-          <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }}></div>
-          <span style={{ padding: '0 0.85rem' }}>HOẶC TIẾP TỤC VỚI</span>
-          <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }}></div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginBottom: '0.5rem' }}>
-          <div id="google-signin-btn" style={{ minHeight: '44px', display: 'flex', justifyContent: 'center' }}></div>
-        </div>
-
-        <div className="text-center mt-3" style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+        <div className="text-center mt-4" style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
           {isLogin ? (
             <p>
               Chưa có tài khoản độc giả?{' '}
@@ -318,4 +226,3 @@ const Login = () => {
 };
 
 export default Login;
-

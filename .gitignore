@@ -1,57 +1,14 @@
-# Maven build targets for all modules
+HELP.md
 target/
-**/target/
-build/
-**/build/
-*.class
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
 *.jar
 *.war
 *.ear
-*.nar
-*.zip
-*.tar.gz
-*.rar
+*.class
 
-# Keep Maven Wrapper JAR
-!.mvn/wrapper/maven-wrapper.jar
-
-# Log files
-*.log
-**/logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Node / Frontend
-node_modules/
-**/node_modules/
-dist/
-**/dist/
-frontend/dist/
-frontend/build/
-frontend/.next/
-frontend/dist-ssr/
-.oxlint-cache/
-
-# Environment Variables & Secrets
-.env
-.env.*
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.local
-!.env.example
-
-# IDE & Editors
-.idea/
-*.iws
-*.iml
-*.ipr
-.vscode/
-*.sublime-project
-*.sublime-workspace
+### STS ###
 .apt_generated
 .classpath
 .factorypath
@@ -60,10 +17,31 @@ frontend/dist-ssr/
 .springBeans
 .sts4-cache
 
-# Operating System Files
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
 .DS_Store
 .AppleDouble
 .LSOverride
+
+### Windows ###
 Thumbs.db
 Thumbs.db:encryptable
 ehthumbs.db
@@ -74,7 +52,22 @@ ehthumbs_vista.db
 *.msp
 *.lnk
 
-# Crash / Temp files
-*.tmp
-*.bak
-*~
+### Node/Frontend ###
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+frontend/build/
+frontend/dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+### Environments ###
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.local

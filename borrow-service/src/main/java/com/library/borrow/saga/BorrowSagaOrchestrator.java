@@ -3,13 +3,8 @@ package com.library.borrow.saga;
 import com.library.borrow.dto.BorrowRequestDTO;
 import com.library.borrow.entity.BorrowRecord;
 import com.library.borrow.repository.BorrowRecordRepository;
-import com.library.events.command.CheckUserOverdueCommand;
-import com.library.events.command.CompensateBookCommand;
-import com.library.events.command.ReserveBookCommand;
 import com.library.events.dto.BorrowStatus;
-import com.library.events.reply.BookCompensatedReply;
-import com.library.events.reply.BookReservedReply;
-import com.library.events.reply.UserCheckedReply;
+import com.library.events.event.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,12 +28,12 @@ public class BorrowSagaOrchestrator {
     private KafkaTemplate<String, Object> kafkaTemplate;
 
     /**
-     * BƯỚC 1: KHỞI TẠO SAGA & GỬI LỆNH TRỪ KHO
+     * BƯỚC 0: TẠO YÊU CẦU MƯỢN SÁCH Ở TRẠNG THÁI PENDING (CHỜ THỦ THƯ DUYỆT)
      */
     @Transactional
-    public BorrowRecord initiateBorrowSaga(BorrowRequestDTO request) {
+    public BorrowRecord createPendingBorrow(BorrowRequestDTO request) {
         String sagaId = UUID.randomUUID().toString();
-        log.info("[SAGA ORCHESTRATOR] === BẮT ĐẦU SAGA MƯỢN SÁCH: {} ===", sagaId);
+        log.info("[CHOREOGRAPHY - BorrowService] === TIẾP NHẬN ĐƠN MƯỢN PENDING: {} ===", sagaId);
 
         BorrowRecord record = new BorrowRecord();
         record.setSagaId(sagaId);
@@ -46,93 +41,106 @@ public class BorrowSagaOrchestrator {
         record.setBookId(request.getBookId());
         record.setBorrowDate(LocalDate.now());
         record.setDueDate(request.getDueDate() != null ? request.getDueDate() : LocalDate.now().plusDays(14));
+        record.setStatus(BorrowStatus.PENDING);
+        return borrowRepository.save(record);
+    }
+
+    /**
+     * BƯỚC 1: KÍCH HOẠT SAGA CHOREOGRAPHY -> PHÁT EVENT 'borrow.event.created'
+     */
+    @Transactional
+    public BorrowRecord startApprovedSaga(BorrowRecord record) {
+        log.info("[CHOREOGRAPHY - BorrowService] === PHÁT SỰ KIỆN 'borrow.event.created' CHO SAGA: {} ===", record.getSagaId());
+
         record.setStatus(BorrowStatus.IN_PROGRESS);
         borrowRepository.save(record);
 
-        // Orchestrator phát Command 1: Trừ kho sách
-        ReserveBookCommand cmd = new ReserveBookCommand(sagaId, request.getBookId(), 1);
-        log.info("[SAGA ORCHESTRATOR] 1. Phát command trừ kho 'book.cmd.reserve' cho bookId: {}", request.getBookId());
-        kafkaTemplate.send("book.cmd.reserve", sagaId, cmd);
+        BorrowCreatedEvent event = new BorrowCreatedEvent(
+                record.getSagaId(), record.getUserId(), record.getBookId(), record.getDueDate()
+        );
+        kafkaTemplate.send("borrow.event.created", record.getSagaId(), event);
 
         return record;
     }
 
     /**
-     * BƯỚC 2: NHẬN PHẢN HỒI TRỪ KHO TỪ BOOK-SERVICE
+     * Khởi tạo và chạy trực tiếp Saga (cho Admin)
      */
     @Transactional
-    @KafkaListener(topics = "book.reply.reserved", groupId = "borrow-orchestrator-group")
-    public void onBookReservedReply(BookReservedReply reply) {
-        log.info("[SAGA ORCHESTRATOR] 2. Nhận kết quả trừ kho từ book-service. sagaId: {}, success: {}", 
-                reply.getSagaId(), reply.isSuccess());
+    public BorrowRecord initiateBorrowSaga(BorrowRequestDTO request) {
+        BorrowRecord record = createPendingBorrow(request);
+        return startApprovedSaga(record);
+    }
 
-        BorrowRecord record = borrowRepository.findBySagaId(reply.getSagaId()).orElse(null);
-        if (record == null) {
-            log.error("[SAGA ORCHESTRATOR] Không tìm thấy saga record: {}", reply.getSagaId());
-            return;
-        }
+    /**
+     * SỰ KIỆN 1: Lắng nghe 'book.event.reserved' từ book-service
+     */
+    @Transactional
+    @KafkaListener(topics = "book.event.reserved", groupId = "borrow-choreography-group")
+    public void onBookReserved(BookReservedEvent event) {
+        log.info("[CHOREOGRAPHY - BorrowService] Sách đã giữ kho thành công cho sagaId: {}", event.getSagaId());
 
-        if (reply.isSuccess()) {
+        BorrowRecord record = borrowRepository.findBySagaId(event.getSagaId()).orElse(null);
+        if (record != null) {
             record.setStatus(BorrowStatus.BOOK_RESERVED);
             borrowRepository.save(record);
-
-            // Kho OK -> Tiếp tục phát Command 2: Kiểm tra User nợ quá hạn
-            CheckUserOverdueCommand cmd = new CheckUserOverdueCommand(reply.getSagaId(), record.getUserId());
-            log.info("[SAGA ORCHESTRATOR] 3. Phát command kiểm tra quá hạn 'user.cmd.check-overdue' cho userId: {}", record.getUserId());
-            kafkaTemplate.send("user.cmd.check-overdue", reply.getSagaId(), cmd);
-        } else {
-            // Kho hết sách -> Thất bại sớm (Không cần bù trừ vì chưa trừ kho)
-            record.setStatus(BorrowStatus.REJECTED_OUT_OF_STOCK);
-            record.setRejectReason(reply.getReason());
-            borrowRepository.save(record);
-            log.warn("[SAGA ORCHESTRATOR] KẾT THÚC SAGA: Thất bại do hết sách trong kho! sagaId: {}", reply.getSagaId());
         }
     }
 
     /**
-     * BƯỚC 3: NHẬN PHẢN HỒI CHECK QUÁ HẠN TỪ USER-SERVICE
+     * SỰ KIỆN 2: Lắng nghe 'user.event.validated' từ user-service -> HOÀN TẤT THÀNH CÔNG!
      */
     @Transactional
-    @KafkaListener(topics = "user.reply.checked", groupId = "borrow-orchestrator-group")
-    public void onUserCheckedReply(UserCheckedReply reply) {
-        log.info("[SAGA ORCHESTRATOR] 4. Nhận kết quả kiểm tra User từ user-service. sagaId: {}, eligible: {}", 
-                reply.getSagaId(), reply.isEligible());
+    @KafkaListener(topics = "user.event.validated", groupId = "borrow-choreography-group")
+    public void onUserValidated(UserValidatedEvent event) {
+        log.info("[CHOREOGRAPHY - BorrowService] === HOÀN TẤT SAGA CHOREOGRAPHY THÀNH CÔNG: APPROVED! sagaId: {} ===", 
+                event.getSagaId());
 
-        BorrowRecord record = borrowRepository.findBySagaId(reply.getSagaId()).orElse(null);
-        if (record == null) return;
-
-        if (reply.isEligible()) {
-            // User hợp lệ -> MƯỢN SÁCH THÀNH CÔNG HOÀN TOÀN!
+        BorrowRecord record = borrowRepository.findBySagaId(event.getSagaId()).orElse(null);
+        if (record != null) {
             record.setStatus(BorrowStatus.APPROVED);
             borrowRepository.save(record);
-            log.info("[SAGA ORCHESTRATOR] === HOÀN TẤT SAGA THÀNH CÔNG: APPROVED! sagaId: {} ===", reply.getSagaId());
-        } else {
-            // USER CÓ SÁCH QUÁ HẠN -> KÍCH HOẠT GIAO DỊCH BÙ TRỪ HOÀN KHO!
-            record.setStatus(BorrowStatus.COMPENSATING);
-            record.setRejectReason(reply.getReason());
-            borrowRepository.save(record);
-
-            log.warn("[SAGA ORCHESTRATOR] USER CÓ SÁCH QUÁ HẠN! Kích hoạt Bù Trừ 'book.cmd.compensate' (+1) cho sagaId: {}", reply.getSagaId());
-            CompensateBookCommand compensateCmd = new CompensateBookCommand(
-                    record.getSagaId(), record.getBookId(), 1, "USER_OVERDUE_REJECTED"
-            );
-            kafkaTemplate.send("book.cmd.compensate", record.getSagaId(), compensateCmd);
         }
     }
 
     /**
-     * BƯỚC 4: NHẬN XÁC NHẬN BÙ TRỪ HOÀN KHO TỪ BOOK-SERVICE
+     * SỰ KIỆN 3: Lắng nghe 'user.event.validation-failed' từ user-service -> USER NỢ QUÁ HẠN!
      */
     @Transactional
-    @KafkaListener(topics = "book.reply.compensated", groupId = "borrow-orchestrator-group")
-    public void onBookCompensatedReply(BookCompensatedReply reply) {
-        log.info("[SAGA ORCHESTRATOR] 5. Nhận xác nhận đã hoàn kho (+1). sagaId: {}", reply.getSagaId());
+    @KafkaListener(topics = "user.event.validation-failed", groupId = "borrow-choreography-group")
+    public void onUserValidationFailed(UserValidationFailedEvent event) {
+        log.warn("[CHOREOGRAPHY - BorrowService] === SAGA ROLLBACK: USER NỢ QUÁ HẠN! sagaId: {} ===", event.getSagaId());
 
-        BorrowRecord record = borrowRepository.findBySagaId(reply.getSagaId()).orElse(null);
+        BorrowRecord record = borrowRepository.findBySagaId(event.getSagaId()).orElse(null);
         if (record != null) {
             record.setStatus(BorrowStatus.REJECTED_OVERDUE);
+            record.setRejectReason(event.getReason());
             borrowRepository.save(record);
-            log.info("[SAGA ORCHESTRATOR] === SAGA ROLLBACK HOÀN TẤT: REJECTED_OVERDUE! sagaId: {} ===", reply.getSagaId());
         }
+    }
+
+    /**
+     * SỰ KIỆN 4: Lắng nghe 'book.event.reserve-failed' từ book-service -> HẾT SÁCH KHO!
+     */
+    @Transactional
+    @KafkaListener(topics = "book.event.reserve-failed", groupId = "borrow-choreography-group")
+    public void onBookReserveFailed(BookReserveFailedEvent event) {
+        log.warn("[CHOREOGRAPHY - BorrowService] === SAGA THẤT BẠI: HẾT SÁCH TRONG KHO! sagaId: {} ===", event.getSagaId());
+
+        BorrowRecord record = borrowRepository.findBySagaId(event.getSagaId()).orElse(null);
+        if (record != null) {
+            record.setStatus(BorrowStatus.REJECTED_OUT_OF_STOCK);
+            record.setRejectReason(event.getReason());
+            borrowRepository.save(record);
+        }
+    }
+
+    /**
+     * SỰ KIỆN 5: Lắng nghe 'book.event.compensated' từ book-service
+     */
+    @Transactional
+    @KafkaListener(topics = "book.event.compensated", groupId = "borrow-choreography-group")
+    public void onBookCompensated(BookCompensatedEvent event) {
+        log.info("[CHOREOGRAPHY - BorrowService] Đã nhận xác nhận hoàn kho cho sagaId: {}", event.getSagaId());
     }
 }

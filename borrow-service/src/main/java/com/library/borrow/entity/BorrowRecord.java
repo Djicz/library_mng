@@ -23,9 +23,10 @@ public class BorrowRecord {
     private UUID bookId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50, columnDefinition = "VARCHAR(50)")
     private BorrowStatus status;
 
+    @Column(length = 500)
     private String rejectReason;
 
     @Column(nullable = false)

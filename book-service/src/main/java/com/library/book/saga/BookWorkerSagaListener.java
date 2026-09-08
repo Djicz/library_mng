@@ -2,10 +2,11 @@ package com.library.book.saga;
 
 import com.library.book.entity.Book;
 import com.library.book.repository.BookRepository;
-import com.library.events.command.CompensateBookCommand;
-import com.library.events.command.ReserveBookCommand;
-import com.library.events.reply.BookCompensatedReply;
-import com.library.events.reply.BookReservedReply;
+import com.library.events.event.BookCompensatedEvent;
+import com.library.events.event.BookReserveFailedEvent;
+import com.library.events.event.BookReservedEvent;
+import com.library.events.event.BorrowCreatedEvent;
+import com.library.events.event.UserValidationFailedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,56 +29,62 @@ public class BookWorkerSagaListener {
     private KafkaTemplate<String, Object> kafkaTemplate;
 
     /**
-     * BƯỚC 2: Nhận Command Trừ Kho từ Saga Orchestrator
+     * BƯỚC 1: Lắng nghe sự kiện mượn sách được tạo (BorrowCreatedEvent) từ borrow-service
      */
     @Transactional
-    @KafkaListener(topics = "book.cmd.reserve", groupId = "book-inventory-group")
-    public void handleReserveCommand(ReserveBookCommand cmd) {
-        log.info("[BookWorker] Nhận lệnh trừ kho sagaId: {}, bookId: {}, qty: {}", cmd.getSagaId(), cmd.getBookId(), cmd.getQuantity());
+    @KafkaListener(topics = "borrow.event.created", groupId = "book-choreography-group")
+    public void onBorrowCreated(BorrowCreatedEvent event) {
+        log.info("[CHOREOGRAPHY - BookService] Nhận sự kiện 'borrow.event.created' cho sagaId: {}, bookId: {}", 
+                event.getSagaId(), event.getBookId());
 
-        BookReservedReply reply = new BookReservedReply();
-        reply.setSagaId(cmd.getSagaId());
-
-        Optional<Book> bookOpt = bookRepository.findById(cmd.getBookId());
+        Optional<Book> bookOpt = bookRepository.findById(event.getBookId());
         if (bookOpt.isPresent()) {
             Book book = bookOpt.get();
-            if (book.getQuantity() >= cmd.getQuantity()) {
-                book.setQuantity(book.getQuantity() - cmd.getQuantity());
+            if (book.getQuantity() >= 1) {
+                book.setQuantity(book.getQuantity() - 1);
                 bookRepository.save(book);
-                reply.setSuccess(true);
-                log.info("[BookWorker] Trừ kho THÀNH CÔNG cho sagaId: {}. Tồn kho mới: {}", cmd.getSagaId(), book.getQuantity());
+                log.info("[CHOREOGRAPHY - BookService] Trừ kho THÀNH CÔNG cho sagaId: {}. Tồn kho còn: {}", 
+                        event.getSagaId(), book.getQuantity());
+
+                // Phát sự kiện BookReservedEvent -> user-service sẽ lắng nghe tiếp
+                BookReservedEvent reservedEvent = new BookReservedEvent(
+                        event.getSagaId(), event.getUserId(), event.getBookId(), 1, event.getDueDate()
+                );
+                kafkaTemplate.send("book.event.reserved", event.getSagaId(), reservedEvent);
             } else {
-                reply.setSuccess(false);
-                reply.setReason("Hết sách trong kho (Số lượng còn 0)");
-                log.warn("[BookWorker] Hết kho cho sagaId: {}", cmd.getSagaId());
+                log.warn("[CHOREOGRAPHY - BookService] HẾT SÁCH KHO cho sagaId: {}", event.getSagaId());
+                BookReserveFailedEvent failedEvent = new BookReserveFailedEvent(
+                        event.getSagaId(), event.getBookId(), "Hết sách trong kho (Số lượng = 0)"
+                );
+                kafkaTemplate.send("book.event.reserve-failed", event.getSagaId(), failedEvent);
             }
         } else {
-            reply.setSuccess(false);
-            reply.setReason("Không tìm thấy sách với ID: " + cmd.getBookId());
-            log.error("[BookWorker] Không tìm thấy sách: {}", cmd.getBookId());
+            log.error("[CHOREOGRAPHY - BookService] Không tìm thấy sách ID: {}", event.getBookId());
+            BookReserveFailedEvent failedEvent = new BookReserveFailedEvent(
+                    event.getSagaId(), event.getBookId(), "Không tìm thấy thông tin sách"
+            );
+            kafkaTemplate.send("book.event.reserve-failed", event.getSagaId(), failedEvent);
         }
-
-        kafkaTemplate.send("book.reply.reserved", cmd.getSagaId(), reply);
     }
 
     /**
-     * GIAO DỊCH BÙ TRỪ: Nhận Command Bù Trừ Hoàn Kho từ Saga Orchestrator
+     * GIAO DỊCH BÙ TRỪ: Lắng nghe sự kiện User kiểm tra thất bại (UserValidationFailedEvent) từ user-service
      */
     @Transactional
-    @KafkaListener(topics = "book.cmd.compensate", groupId = "book-inventory-group")
-    public void handleCompensateCommand(CompensateBookCommand cmd) {
-        log.info("[BookWorker - COMPENSATE] Nhận lệnh BÙ TRỪ HOÀN KHO sagaId: {}, bookId: {}, qty: {}", 
-                cmd.getSagaId(), cmd.getBookId(), cmd.getQuantity());
+    @KafkaListener(topics = "user.event.validation-failed", groupId = "book-choreography-group")
+    public void onUserValidationFailed(UserValidationFailedEvent event) {
+        log.warn("[CHOREOGRAPHY - BookService - COMPENSATE] Nhận sự kiện 'user.event.validation-failed'. Hoàn kho (+1) cho sagaId: {}, bookId: {}", 
+                event.getSagaId(), event.getBookId());
 
-        Optional<Book> bookOpt = bookRepository.findById(cmd.getBookId());
+        Optional<Book> bookOpt = bookRepository.findById(event.getBookId());
         if (bookOpt.isPresent()) {
             Book book = bookOpt.get();
-            book.setQuantity(book.getQuantity() + cmd.getQuantity()); // Hoàn lại +1
+            book.setQuantity(book.getQuantity() + 1);
             bookRepository.save(book);
-            log.info("[BookWorker - COMPENSATE] Đã hoàn lại sách vào kho. Tồn kho mới: {}", book.getQuantity());
+            log.info("[CHOREOGRAPHY - BookService - COMPENSATE] Đã hoàn lại sách vào kho. Tồn kho mới: {}", book.getQuantity());
         }
 
-        BookCompensatedReply reply = new BookCompensatedReply(cmd.getSagaId(), true);
-        kafkaTemplate.send("book.reply.compensated", cmd.getSagaId(), reply);
+        BookCompensatedEvent compensatedEvent = new BookCompensatedEvent(event.getSagaId(), event.getBookId(), 1);
+        kafkaTemplate.send("book.event.compensated", event.getSagaId(), compensatedEvent);
     }
 }

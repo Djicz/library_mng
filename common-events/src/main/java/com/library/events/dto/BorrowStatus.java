@@ -1,10 +1,12 @@
 package com.library.events.dto;
 
 public enum BorrowStatus {
-    IN_PROGRESS,                   // Bước 1: Khởi tạo, chờ trừ kho
-    BOOK_RESERVED,                 // Bước 2: Đã trừ kho, đang check user
-    APPROVED,                      // Bước 3: User hợp lệ -> Mượn thành công
-    COMPENSATING,                  // Bù trừ: User quá hạn -> Đang hoàn lại kho
-    REJECTED_OUT_OF_STOCK,         // Thất bại: Kho hết sách
-    REJECTED_OVERDUE               // Thất bại: User nợ sách quá hạn (đã hoàn kho)
+    PENDING,                       // Chờ thủ thư duyệt
+    IN_PROGRESS,                   // Đang thực hiện chuỗi sự kiện Saga
+    BOOK_RESERVED,                 // Sách đã giữ kho, đang kiểm tra quá hạn
+    APPROVED,                      // Mượn sách thành công
+    COMPENSATING,                  // Đang rollback bù trừ
+    REJECTED_OUT_OF_STOCK,         // Thất bại: Hết sách trong kho
+    REJECTED_OVERDUE,              // Thất bại: Bạn đọc có sách nợ quá hạn
+    REJECTED                       // Bị từ chối
 }

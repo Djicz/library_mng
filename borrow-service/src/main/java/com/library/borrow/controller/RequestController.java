@@ -19,7 +19,7 @@ public class RequestController {
     @GetMapping
     public List<BorrowRecord> getPendingRequests() {
         return borrowService.getAllBorrowRecords().stream()
-                .filter(r -> r.getStatus() == BorrowStatus.IN_PROGRESS || r.getStatus() == BorrowStatus.BOOK_RESERVED)
+                .filter(r -> r.getStatus() == BorrowStatus.PENDING)
                 .collect(Collectors.toList());
     }
 }

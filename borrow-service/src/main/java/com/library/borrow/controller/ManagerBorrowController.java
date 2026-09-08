@@ -22,6 +22,11 @@ public class ManagerBorrowController {
         return borrowService.getAllBorrowRecords();
     }
 
+    @PostMapping("/assign")
+    public ResponseEntity<ApiResponse<BorrowRecord>> assignBorrow(@RequestBody com.library.borrow.dto.BorrowRequestDTO request) {
+        return ResponseEntity.ok(new ApiResponse<>(1, "Tạo phiếu mượn và kích hoạt Saga thành công", borrowService.createDirectBorrow(request)));
+    }
+
     @PostMapping("/approve/{id}")
     public ResponseEntity<ApiResponse<BorrowRecord>> approve(@PathVariable Long id) {
         return ResponseEntity.ok(new ApiResponse<>(1, "Phê duyệt mượn sách thành công", borrowService.approveRequest(id)));

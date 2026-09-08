@@ -1,7 +1,8 @@
 package com.library.user.saga;
 
-import com.library.events.command.CheckUserOverdueCommand;
-import com.library.events.reply.UserCheckedReply;
+import com.library.events.event.BookReservedEvent;
+import com.library.events.event.UserValidatedEvent;
+import com.library.events.event.UserValidationFailedEvent;
 import com.library.user.repository.UserBorrowHistoryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,31 +25,34 @@ public class UserWorkerSagaListener {
     private KafkaTemplate<String, Object> kafkaTemplate;
 
     /**
-     * BƯỚC 3: Nhận Command Kiểm Tra Sách Quá Hạn từ Saga Orchestrator
+     * BƯỚC 2: Lắng nghe sự kiện sách đã được giữ (BookReservedEvent) từ book-service
      */
-    @KafkaListener(topics = "user.cmd.check-overdue", groupId = "user-validator-group")
-    public void handleCheckOverdueCommand(CheckUserOverdueCommand cmd) {
-        log.info("[UserWorker] Nhận lệnh kiểm tra nợ quá hạn sagaId: {}, userId: {}", cmd.getSagaId(), cmd.getUserId());
+    @KafkaListener(topics = "book.event.reserved", groupId = "user-choreography-group")
+    public void onBookReserved(BookReservedEvent event) {
+        log.info("[CHOREOGRAPHY - UserService] Nhận sự kiện 'book.event.reserved' cho sagaId: {}, userId: {}", 
+                event.getSagaId(), event.getUserId());
 
         // Kiểm tra xem User có cuốn sách nào có dueDate < hôm nay và chưa trả không
         boolean hasOverdue = historyRepository.existsByUserIdAndDueDateBeforeAndIsReturnedFalse(
-                cmd.getUserId(), LocalDate.now()
+                event.getUserId(), LocalDate.now()
         );
 
-        UserCheckedReply reply = new UserCheckedReply();
-        reply.setSagaId(cmd.getSagaId());
-        reply.setUserId(cmd.getUserId());
-
         if (hasOverdue) {
-            reply.setEligible(false);
-            reply.setReason("Tài khoản đang có sách quá hạn chưa hoàn trả!");
-            log.warn("[UserWorker] PHÁT HIỆN USER CÓ SÁCH QUÁ HẠN! sagaId: {}, userId: {}", cmd.getSagaId(), cmd.getUserId());
+            log.warn("[CHOREOGRAPHY - UserService] PHÁT HIỆN USER CÓ SÁCH QUÁ HẠN! sagaId: {}, userId: {}", 
+                    event.getSagaId(), event.getUserId());
+            UserValidationFailedEvent failedEvent = new UserValidationFailedEvent(
+                    event.getSagaId(), event.getUserId(), event.getBookId(), "Tài khoản đang có sách quá hạn chưa hoàn trả!"
+            );
+            // Phát sự kiện thất bại -> book-service và borrow-service đều sẽ lắng nghe
+            kafkaTemplate.send("user.event.validation-failed", event.getSagaId(), failedEvent);
         } else {
-            reply.setEligible(true);
-            reply.setReason("Tài khoản hợp lệ, không có sách quá hạn.");
-            log.info("[UserWorker] User HỢP LỆ. sagaId: {}, userId: {}", cmd.getSagaId(), cmd.getUserId());
+            log.info("[CHOREOGRAPHY - UserService] User HỢP LỆ! sagaId: {}, userId: {}", 
+                    event.getSagaId(), event.getUserId());
+            UserValidatedEvent validatedEvent = new UserValidatedEvent(
+                    event.getSagaId(), event.getUserId(), event.getBookId()
+            );
+            // Phát sự kiện thành công -> borrow-service sẽ cập nhật APPROVED
+            kafkaTemplate.send("user.event.validated", event.getSagaId(), validatedEvent);
         }
-
-        kafkaTemplate.send("user.reply.checked", cmd.getSagaId(), reply);
     }
 }

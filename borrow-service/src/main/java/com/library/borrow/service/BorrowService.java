@@ -1,5 +1,7 @@
 package com.library.borrow.service;
 
+import com.library.borrow.Exception.AppException;
+import com.library.borrow.Exception.ErrCode;
 import com.library.borrow.entity.BorrowRecord;
 import com.library.borrow.repository.BorrowRecordRepository;
 import com.library.events.dto.BorrowStatus;
@@ -33,7 +35,7 @@ public class BorrowService {
     @Transactional
     public BorrowRecord returnBook(Long recordId) {
         BorrowRecord record = borrowRecordRepository.findById(recordId)
-                .orElseThrow(() -> new RuntimeException("Borrow record not found with id: " + recordId));
+                .orElseThrow(() -> new AppException(ErrCode.BORROW_RECORD_NOTFOUND));
 
         if (record.getReturnDate() == null) {
             record.setReturnDate(LocalDate.now());
@@ -45,7 +47,7 @@ public class BorrowService {
     @Transactional
     public BorrowRecord approveRequest(Long id) {
         BorrowRecord record = borrowRecordRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Borrow record not found with id: " + id));
+                .orElseThrow(() -> new AppException(ErrCode.BORROW_RECORD_NOTFOUND));
         record.setStatus(BorrowStatus.APPROVED);
         return borrowRecordRepository.save(record);
     }
@@ -53,7 +55,7 @@ public class BorrowService {
     @Transactional
     public BorrowRecord rejectRequest(Long id, String reason) {
         BorrowRecord record = borrowRecordRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Borrow record not found with id: " + id));
+                .orElseThrow(() -> new AppException(ErrCode.BORROW_RECORD_NOTFOUND));
         record.setStatus(BorrowStatus.REJECTED_OVERDUE);
         record.setRejectReason(reason);
         return borrowRecordRepository.save(record);

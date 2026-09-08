@@ -1,5 +1,8 @@
 package com.library.user.controller;
 
+import com.library.user.Exception.AppException;
+import com.library.user.Exception.ErrCode;
+import com.library.user.dto.ApiResponse;
 import com.library.user.entity.User;
 import com.library.user.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,21 +18,25 @@ public class ProfileController {
     private UserRepository userRepository;
 
     @GetMapping
-    public ResponseEntity<?> getProfile(Authentication authentication) {
-        if (authentication == null) return ResponseEntity.status(401).build();
-        return userRepository.findByUsername(authentication.getName())
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<User>> getProfile(Authentication authentication) {
+        if (authentication == null) {
+            throw new AppException(ErrCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new AppException(ErrCode.USER_NOTFOUND));
+        return ResponseEntity.ok(new ApiResponse<>(1, null, user));
     }
 
     @PutMapping
-    public ResponseEntity<?> updateProfile(Authentication authentication, @RequestBody User updateData) {
-        if (authentication == null) return ResponseEntity.status(401).build();
-        return userRepository.findByUsername(authentication.getName())
-                .map(user -> {
-                    if (updateData.getDisplayName() != null) user.setDisplayName(updateData.getDisplayName());
-                    return ResponseEntity.ok(userRepository.save(user));
-                })
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<User>> updateProfile(Authentication authentication, @RequestBody User updateData) {
+        if (authentication == null) {
+            throw new AppException(ErrCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new AppException(ErrCode.USER_NOTFOUND));
+        if (updateData.getDisplayName() != null) {
+            user.setDisplayName(updateData.getDisplayName());
+        }
+        return ResponseEntity.ok(new ApiResponse<>(1, "Cập nhật thông tin thành công", userRepository.save(user)));
     }
 }

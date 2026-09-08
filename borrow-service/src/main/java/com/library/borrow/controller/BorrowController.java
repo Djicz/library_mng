@@ -1,5 +1,8 @@
 package com.library.borrow.controller;
 
+import com.library.borrow.Exception.AppException;
+import com.library.borrow.Exception.ErrCode;
+import com.library.borrow.dto.ApiResponse;
 import com.library.borrow.dto.BorrowRequestDTO;
 import com.library.borrow.entity.BorrowRecord;
 import com.library.borrow.repository.BorrowRecordRepository;
@@ -26,19 +29,19 @@ public class BorrowController {
      * Kích hoạt Saga mượn sách bất đồng bộ
      */
     @PostMapping
-    public ResponseEntity<BorrowRecord> requestBorrow(@RequestBody BorrowRequestDTO request) {
+    public ResponseEntity<ApiResponse<BorrowRecord>> requestBorrow(@RequestBody BorrowRequestDTO request) {
         BorrowRecord record = sagaOrchestrator.initiateBorrowSaga(request);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(record);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(new ApiResponse<>(1, "Yêu cầu mượn sách đã được tiếp nhận và đang xử lý", record));
     }
 
     /**
      * Kiểm tra trạng thái hiện tại của Saga theo sagaId (Polling)
      */
     @GetMapping("/saga/{sagaId}")
-    public ResponseEntity<BorrowRecord> getSagaStatus(@PathVariable String sagaId) {
-        return borrowRepository.findBySagaId(sagaId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<BorrowRecord>> getSagaStatus(@PathVariable String sagaId) {
+        BorrowRecord record = borrowRepository.findBySagaId(sagaId)
+                .orElseThrow(() -> new AppException(ErrCode.BORROW_RECORD_NOTFOUND));
+        return ResponseEntity.ok(new ApiResponse<>(1, null, record));
     }
 
     /**

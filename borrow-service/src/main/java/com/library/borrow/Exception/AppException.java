@@ -1,4 +1,4 @@
-package com.library.book.Exception;
+package com.library.borrow.Exception;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -6,7 +6,8 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = false)
 public class AppException extends RuntimeException {
-    ErrCode errCode;
+    private ErrCode errCode;
+
     public AppException(ErrCode errCode) {
         super(errCode.getMessage());
         this.errCode = errCode;

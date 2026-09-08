@@ -79,14 +79,16 @@ const Categories = () => {
 
   const handleEditSubmit = async (id) => {
     try {
-      await api.post(`/manager/category/update/${id}`, { name: editCategoryName });
+      await api.put(`/manager/category/update/${id}`, editCategoryName, {
+        headers: { 'Content-Type': 'text/plain' }
+      });
       setEditCategoryId(null);
       setEditCategoryName('');
       triggerSuccess('Cập nhật tên thể loại thành công!');
       fetchCategories();
     } catch (error) {
       console.error("Error updating category", error);
-      alert(error.response?.data || "Lỗi khi cập nhật thể loại.");
+      alert(error.response?.data?.message || error.response?.data || "Lỗi khi cập nhật thể loại.");
     }
   };
 

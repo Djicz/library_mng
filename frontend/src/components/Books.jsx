@@ -36,19 +36,20 @@ const Books = () => {
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   
-  const [bulkBooksJson, setBulkBooksJson] = useState('[\n  {\n    "name": "Lập trình React Hiện Đại",\n    "category": { "id": "category-id" },\n    "quantity": 5\n  }\n]');
+  const [bulkBooksJson, setBulkBooksJson] = useState('[\n  {\n    "title": "Lập trình React Hiện Đại",\n    "author": "Dan Abramov",\n    "category": { "id": "category-id" },\n    "quantity": 5\n  }\n]');
   const [bulkError, setBulkError] = useState('');
-  const [newBook, setNewBook] = useState({ name: '', category: '', quantity: 1 });
+  const [newBook, setNewBook] = useState({ title: '', author: '', category: '', quantity: 1 });
   const [editBookId, setEditBookId] = useState(null);
-  const [editBookData, setEditBookData] = useState({ name: '', category: '', quantity: 1 });
+  const [editBookData, setEditBookData] = useState({ title: '', author: '', category: '', quantity: 1 });
   const [actionSuccess, setActionSuccess] = useState('');
 
   const navigate = useNavigate();
 
   const fetchBooks = async (searchTerm = '') => {
     try {
-      const response = await api.get(`/books${searchTerm ? '?search=' + encodeURIComponent(searchTerm) : ''}`);
-      setBooks(response.data);
+      const response = await api.get('/books');
+      const bookList = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setBooks(bookList);
     } catch (error) {
       console.error("Error fetching books", error);
     }
@@ -57,7 +58,8 @@ const Books = () => {
   const fetchCategories = async () => {
     try {
       const response = await api.get('/manager/category');
-      setCategories(response.data);
+      const catList = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setCategories(catList);
     } catch (error) {
       console.error("Error fetching categories", error);
     }
@@ -75,15 +77,15 @@ const Books = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchBooks(search);
+    // Search is handled client-side in filteredBooks memo
   };
 
-  const handleDelete = async (id, name) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa đầu sách "${name}"?`)) {
+  const handleDelete = async (id, title) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa đầu sách "${title}"?`)) {
       try {
-        await api.delete(`/books/${id}`);
-        triggerSuccess(`Đã xóa sách "${name}" thành công.`);
-        fetchBooks(search);
+        const response = await api.delete(`/books/${id}`);
+        triggerSuccess(response.data?.message || `Đã xóa sách "${title}" thành công.`);
+        fetchBooks();
       } catch (error) {
         console.error("Error deleting book", error);
         alert(error.response?.data?.message || "Lỗi khi xóa sách.");
@@ -94,12 +96,17 @@ const Books = () => {
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     try {
-      const bookData = { ...newBook, category: { id: newBook.category } };
+      const bookData = { 
+        title: newBook.title,
+        author: newBook.author || 'Chưa cập nhật',
+        quantity: parseInt(newBook.quantity) || 1,
+        category: newBook.category ? { id: newBook.category } : null 
+      };
       await api.post('/books', bookData);
-      setNewBook({ name: '', category: '', quantity: 1 });
+      setNewBook({ title: '', author: '', category: '', quantity: 1 });
       setShowAddModal(false);
       triggerSuccess('Thêm đầu sách mới thành công!');
-      fetchBooks(search);
+      fetchBooks();
     } catch (error) {
       console.error("Error adding book", error);
       alert(error.response?.data?.message || 'Lỗi khi thêm sách.');
@@ -115,10 +122,17 @@ const Books = () => {
         setBulkError('Dữ liệu JSON phải là một Mảng (Array)');
         return;
       }
-      await api.post('/books/in-books', parsedData);
+      for (const item of parsedData) {
+        await api.post('/books', {
+          title: item.title || item.name,
+          author: item.author || 'Chưa cập nhật',
+          quantity: item.quantity || 1,
+          category: item.category?.id ? { id: item.category.id } : null
+        });
+      }
       setShowBulkModal(false);
       triggerSuccess(`Import thành công ${parsedData.length} đầu sách!`);
-      fetchBooks(search);
+      fetchBooks();
     } catch (error) {
       console.error("Error adding bulk books", error);
       setBulkError(error.message || 'Dữ liệu JSON không hợp lệ hoặc lỗi máy chủ.');
@@ -128,7 +142,8 @@ const Books = () => {
   const startEdit = (book) => {
     setEditBookId(book.id);
     setEditBookData({
-      name: book.name,
+      title: book.title || book.name || '',
+      author: book.author || '',
       category: book.category?.id || '',
       quantity: book.quantity
     });
@@ -138,12 +153,17 @@ const Books = () => {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     try {
-      const bookData = { ...editBookData, category: { id: editBookData.category } };
-      await api.put(`/books/update/${editBookId}`, bookData);
+      const bookData = { 
+        title: editBookData.title,
+        author: editBookData.author || 'Chưa cập nhật',
+        quantity: parseInt(editBookData.quantity) || 0,
+        category: editBookData.category ? { id: editBookData.category } : null 
+      };
+      await api.put(`/books/${editBookId}`, bookData);
       setShowEditModal(false);
       setEditBookId(null);
       triggerSuccess('Cập nhật thông tin sách thành công!');
-      fetchBooks(search);
+      fetchBooks();
     } catch (error) {
       console.error("Error updating book", error);
       alert(error.response?.data?.message || "Lỗi khi cập nhật sách.");
@@ -151,10 +171,20 @@ const Books = () => {
   };
 
   const filteredBooks = useMemo(() => {
-    return selectedCategory 
-      ? books.filter(b => b.category?.id === selectedCategory) 
-      : books;
-  }, [books, selectedCategory]);
+    let list = books;
+    if (selectedCategory) {
+      list = list.filter(b => b.category?.id === selectedCategory);
+    }
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      list = list.filter(b => 
+        (b.title && b.title.toLowerCase().includes(term)) ||
+        (b.author && b.author.toLowerCase().includes(term)) ||
+        (b.name && b.name.toLowerCase().includes(term))
+      );
+    }
+    return list;
+  }, [books, selectedCategory, search]);
 
   const totalPages = Math.ceil(filteredBooks.length / pageSize) || 1;
 
@@ -280,8 +310,8 @@ const Books = () => {
                       <BookOpen size={18} />
                     </div>
                     <div>
-                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{book.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Mã: #{book.id ? book.id.substring(0, 8) : 'N/A'}</div>
+                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{book.title || book.name}</div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Tác giả: {book.author || 'Chưa cập nhật'}</div>
                     </div>
                   </div>
                 </td>
@@ -325,7 +355,7 @@ const Books = () => {
                     <button 
                       className="btn-action-icon btn-action-delete" 
                       title="Xóa đầu sách"
-                      onClick={() => handleDelete(book.id, book.name)}
+                      onClick={() => handleDelete(book.id, book.title || book.name)}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -451,8 +481,20 @@ const Books = () => {
                     type="text" 
                     className="form-control-custom" 
                     placeholder="Ví dụ: Đắc Nhân Tâm"
-                    value={newBook.name} 
-                    onChange={e => setNewBook({...newBook, name: e.target.value})} 
+                    value={newBook.title} 
+                    onChange={e => setNewBook({...newBook, title: e.target.value})} 
+                    required 
+                  />
+                </div>
+
+                <div className="form-group-custom">
+                  <label className="form-label-custom">Tác Giả <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <input 
+                    type="text" 
+                    className="form-control-custom" 
+                    placeholder="Ví dụ: Dale Carnegie"
+                    value={newBook.author} 
+                    onChange={e => setNewBook({...newBook, author: e.target.value})} 
                     required 
                   />
                 </div>
@@ -526,8 +568,19 @@ const Books = () => {
                   <input 
                     type="text" 
                     className="form-control-custom" 
-                    value={editBookData.name} 
-                    onChange={e => setEditBookData({...editBookData, name: e.target.value})} 
+                    value={editBookData.title} 
+                    onChange={e => setEditBookData({...editBookData, title: e.target.value})} 
+                    required 
+                  />
+                </div>
+
+                <div className="form-group-custom">
+                  <label className="form-label-custom">Tác Giả</label>
+                  <input 
+                    type="text" 
+                    className="form-control-custom" 
+                    value={editBookData.author} 
+                    onChange={e => setEditBookData({...editBookData, author: e.target.value})} 
                     required 
                   />
                 </div>

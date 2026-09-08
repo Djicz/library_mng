@@ -1,5 +1,8 @@
 package com.library.user.controller;
 
+import com.library.user.Exception.AppException;
+import com.library.user.Exception.ErrCode;
+import com.library.user.dto.ApiResponse;
 import com.library.user.entity.User;
 import com.library.user.entity.UserBorrowHistory;
 import com.library.user.repository.UserBorrowHistoryRepository;
@@ -28,22 +31,25 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable UUID id) {
-        return userRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<User>> getUserById(@PathVariable UUID id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrCode.USER_NOTFOUND));
+        return ResponseEntity.ok(new ApiResponse<>(1, null, user));
     }
 
     @PostMapping
-    public ResponseEntity<User> createUser(@RequestBody User user) {
-        return ResponseEntity.ok(userRepository.save(user));
+    public ResponseEntity<ApiResponse<User>> createUser(@RequestBody User user) {
+        if (user.getUsername() != null && userRepository.findByUsername(user.getUsername()).isPresent()) {
+            throw new AppException(ErrCode.USER_EXISTED);
+        }
+        return ResponseEntity.ok(new ApiResponse<>(1, null, userRepository.save(user)));
     }
 
     /**
      * Endpoint test: Thêm 1 bản ghi quá hạn cho User để test luồng Saga Rollback!
      */
     @PostMapping("/{id}/simulate-overdue")
-    public ResponseEntity<String> simulateOverdueBook(@PathVariable UUID id, @RequestParam UUID bookId) {
+    public ResponseEntity<ApiResponse<String>> simulateOverdueBook(@PathVariable UUID id, @RequestParam UUID bookId) {
         UserBorrowHistory history = new UserBorrowHistory(
                 id, 
                 bookId, 
@@ -51,6 +57,6 @@ public class UserController {
                 false
         );
         historyRepository.save(history);
-        return ResponseEntity.ok("Đã tạo giả lập 1 sách quá hạn 5 ngày cho User: " + id);
+        return ResponseEntity.ok(new ApiResponse<>(1, "Đã tạo giả lập 1 sách quá hạn 5 ngày cho User: " + id, null));
     }
 }

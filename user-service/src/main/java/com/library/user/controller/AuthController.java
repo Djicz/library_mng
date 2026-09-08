@@ -1,5 +1,8 @@
 package com.library.user.controller;
 
+import com.library.user.Exception.AppException;
+import com.library.user.Exception.ErrCode;
+import com.library.user.dto.ApiResponse;
 import com.library.user.dto.JwtResponse;
 import com.library.user.dto.LoginRequest;
 import com.library.user.dto.RegisterRequest;
@@ -7,12 +10,9 @@ import com.library.user.entity.User;
 import com.library.user.repository.UserRepository;
 import com.library.user.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -29,19 +29,15 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@RequestBody LoginRequest loginRequest) {
-        Optional<User> userOpt = userRepository.findByUsername(loginRequest.getUsername());
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Tài khoản không tồn tại");
-        }
+        User user = userRepository.findByUsername(loginRequest.getUsername())
+                .orElseThrow(() -> new AppException(ErrCode.USER_NOTFOUND));
 
-        User user = userOpt.get();
         if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Sai mật khẩu");
+            throw new AppException(ErrCode.WRONG_PASSWORD);
         }
 
         if ("UNAVAILABLE".equalsIgnoreCase(user.getStatus())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Tài khoản này đã bị khóa, vui lòng liên hệ admin để biết thêm chi tiết");
+            throw new AppException(ErrCode.ACCOUNT_LOCKED);
         }
 
         String jwt = jwtUtil.generateToken(user.getUsername(), user.getRole());
@@ -49,9 +45,9 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> registerAcc(@RequestBody RegisterRequest registerRequest) {
+    public ResponseEntity<ApiResponse<User>> registerAcc(@RequestBody RegisterRequest registerRequest) {
         if (userRepository.findByUsername(registerRequest.getUsername()).isPresent()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Tài khoản đã tồn tại");
+            throw new AppException(ErrCode.USER_EXISTED);
         }
         User user = new User();
         user.setUsername(registerRequest.getUsername());
@@ -59,6 +55,6 @@ public class AuthController {
         user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
         user.setRole("BORROWER");
         user.setStatus("AVAILABLE");
-        return ResponseEntity.ok(userRepository.save(user));
+        return ResponseEntity.ok(new ApiResponse<>(1, "Đăng ký thành công", userRepository.save(user)));
     }
 }

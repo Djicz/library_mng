@@ -33,12 +33,16 @@ const Navigation = () => {
     const fetchProfile = async () => {
       try {
         const response = await api.get('/profile');
-        if (response.data) {
+        const user = response.data?.data || response.data;
+        if (user) {
           setProfile(prev => ({
             ...prev,
-            displayName: response.data.displayName || response.data.username,
-            role: response.data.role
+            displayName: user.displayName || user.username,
+            role: user.role
           }));
+          if (user.id && !localStorage.getItem('userId')) {
+            localStorage.setItem('userId', user.id);
+          }
         }
       } catch (err) {
         console.error("Error fetching profile for navigation", err);
@@ -49,20 +53,13 @@ const Navigation = () => {
   }, []);
 
   useEffect(() => {
-    // If manager, fetch total pending count from RequestController APIs
+    // If manager, fetch total pending count from RequestController
     if (profile.role === 'MANAGER') {
       const fetchCounts = async () => {
         try {
-          const [reqRes, bookRes, endRes] = await Promise.all([
-            api.get('/manager/request').catch(() => ({ data: [] })),
-            api.get('/manager/request/book').catch(() => ({ data: [] })),
-            api.get('/manager/request/end').catch(() => ({ data: [] }))
-          ]);
-
-          const total = (Array.isArray(reqRes.data) ? reqRes.data.length : 0) +
-                        (Array.isArray(bookRes.data) ? bookRes.data.length : 0) +
-                        (Array.isArray(endRes.data) ? endRes.data.length : 0);
-          setPendingTotalCount(total);
+          const reqRes = await api.get('/requests').catch(() => ({ data: [] }));
+          const list = Array.isArray(reqRes.data) ? reqRes.data : [];
+          setPendingTotalCount(list.length);
         } catch (err) {
           // Ignore
         }

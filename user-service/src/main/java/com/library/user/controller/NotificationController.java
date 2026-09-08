@@ -1,5 +1,8 @@
 package com.library.user.controller;
 
+import com.library.user.Exception.AppException;
+import com.library.user.Exception.ErrCode;
+import com.library.user.dto.ApiResponse;
 import com.library.user.entity.Notification;
 import com.library.user.entity.User;
 import com.library.user.repository.NotificationRepository;
@@ -10,7 +13,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -23,22 +25,22 @@ public class NotificationController {
     private UserRepository userRepository;
 
     @GetMapping
-    public ResponseEntity<List<Notification>> getMyNotifications(Authentication authentication) {
-        if (authentication == null) return ResponseEntity.status(401).build();
-        Optional<User> userOpt = userRepository.findByUsername(authentication.getName());
-        if (userOpt.isPresent()) {
-            return ResponseEntity.ok(notificationRepository.findByUserIdOrderByCreatedAtDesc(userOpt.get().getId()));
+    public ResponseEntity<ApiResponse<List<Notification>>> getMyNotifications(Authentication authentication) {
+        if (authentication == null) {
+            throw new AppException(ErrCode.UNAUTHORIZED);
         }
-        return ResponseEntity.notFound().build();
+        User user = userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new AppException(ErrCode.USER_NOTFOUND));
+        
+        List<Notification> notifications = notificationRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
+        return ResponseEntity.ok(new ApiResponse<>(1, null, notifications));
     }
 
     @PutMapping("/{id}/read")
-    public ResponseEntity<?> markAsRead(@PathVariable Long id) {
-        return notificationRepository.findById(id)
-                .map(noti -> {
-                    noti.setRead(true);
-                    return ResponseEntity.ok(notificationRepository.save(noti));
-                })
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<Notification>> markAsRead(@PathVariable Long id) {
+        Notification noti = notificationRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrCode.NOTIFICATION_NOTFOUND));
+        noti.setRead(true);
+        return ResponseEntity.ok(new ApiResponse<>(1, "Đã đánh dấu đã đọc", notificationRepository.save(noti)));
     }
 }

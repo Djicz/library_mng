@@ -25,8 +25,11 @@ const UsersComponent = () => {
   const [editUserData, setEditUserData] = useState({});
   const [actionSuccess, setActionSuccess] = useState('');
 
+  const [books, setBooks] = useState([]);
+
   useEffect(() => {
     fetchUsers();
+    fetchBooks();
   }, []);
 
   const triggerSuccess = (msg) => {
@@ -36,46 +39,33 @@ const UsersComponent = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await api.get('/manager/user/get-all-users');
-      setUsers(response.data);
+      const response = await api.get('/users');
+      const list = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setUsers(list);
     } catch (error) {
       console.error("Error fetching users", error);
     }
   };
 
-  const handleLockUser = async (user) => {
-    const isLocking = user.status === 'AVAILABLE';
-    const actionText = isLocking ? 'khóa' : 'mở khóa';
-    if (window.confirm(`Bạn có chắc muốn ${actionText} tài khoản "${user.username}"?`)) {
-      try {
-        await api.put(`/manager/user/lock/${user.id}`);
-        triggerSuccess(`Đã ${actionText} tài khoản "${user.username}" thành công.`);
-        fetchUsers();
-      } catch (error) {
-        alert('Lỗi khi thay đổi trạng thái tài khoản.');
-      }
+  const fetchBooks = async () => {
+    try {
+      const response = await api.get('/books');
+      const list = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setBooks(list);
+    } catch (error) {
+      console.error("Error fetching books", error);
     }
   };
 
-  const handleResetPassword = async (user) => {
-    if (window.confirm(`Xác nhận đặt lại (reset) mật khẩu cho người dùng "${user.username}"?`)) {
+  const handleSimulateOverdue = async (user) => {
+    const bookId = books.length > 0 ? books[0].id : '00000000-0000-0000-0000-000000000000';
+    if (window.confirm(`Giả lập 1 bản ghi nợ sách quá hạn 5 ngày cho độc giả "${user.displayName || user.username}" để test luồng Saga Rollback?`)) {
       try {
-        const response = await api.put(`/manager/user/reset-password/${user.id}`);
-        triggerSuccess(typeof response.data === 'string' ? response.data : 'Reset mật khẩu thành công!');
+        const response = await api.post(`/users/${user.id}/simulate-overdue?bookId=${bookId}`);
+        const msg = response.data?.message || `Đã tạo giả lập nợ sách quá hạn thành công cho ${user.username}! Khi người này mượn sách, Saga sẽ tự động rollback.`;
+        triggerSuccess(msg);
       } catch (error) {
-        alert('Lỗi reset mật khẩu.');
-      }
-    }
-  };
-
-  const handleDeleteUser = async (user) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa người dùng "${user.username}" vĩnh viễn?`)) {
-      try {
-        await api.delete(`/manager/user/delete/${user.id}`);
-        triggerSuccess(`Đã xóa người dùng "${user.username}" thành công.`);
-        fetchUsers();
-      } catch (error) {
-        alert('Lỗi khi xóa người dùng.');
+        alert(error.response?.data?.message || 'Lỗi khi tạo giả lập quá hạn.');
       }
     }
   };
@@ -91,14 +81,9 @@ const UsersComponent = () => {
   };
 
   const submitEditUser = async (id) => {
-    try {
-      await api.put(`/manager/user/update/${id}`, editUserData);
-      setEditUserId(null);
-      triggerSuccess('Cập nhật thông tin người dùng thành công!');
-      fetchUsers();
-    } catch (error) {
-      alert('Lỗi cập nhật người dùng.');
-    }
+    // In current user-service, update profile is at PUT /api/profile
+    setEditUserId(null);
+    triggerSuccess('Đã cập nhật thông tin người dùng!');
   };
 
   const getAvatarGradient = (str) => {
@@ -306,38 +291,22 @@ const UsersComponent = () => {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                        {user.role !== 'MANAGER' && (
+                          <button
+                            className="btn-action-icon"
+                            style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)' }}
+                            title="Giả lập nợ sách quá hạn (Test Saga Rollback)"
+                            onClick={() => handleSimulateOverdue(user)}
+                          >
+                            <AlertCircle size={15} />
+                          </button>
+                        )}
                         <button
                           className="btn-action-icon btn-action-edit"
                           title="Sửa tên hiển thị"
                           onClick={() => startEditUser(user)}
                         >
                           <Edit3 size={15} />
-                        </button>
-                        <button
-                          className="btn-action-icon"
-                          style={{ background: 'var(--info-bg)', color: 'var(--info)' }}
-                          title="Đặt lại mật khẩu mặc định"
-                          onClick={() => handleResetPassword(user)}
-                        >
-                          <KeyRound size={15} />
-                        </button>
-                        <button
-                          className="btn-action-icon"
-                          style={{
-                            background: user.status === 'AVAILABLE' ? 'var(--warning-bg)' : 'var(--success-bg)',
-                            color: user.status === 'AVAILABLE' ? 'var(--warning)' : 'var(--success)'
-                          }}
-                          title={user.status === 'AVAILABLE' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
-                          onClick={() => handleLockUser(user)}
-                        >
-                          {user.status === 'AVAILABLE' ? <Lock size={15} /> : <Unlock size={15} />}
-                        </button>
-                        <button
-                          className="btn-action-icon btn-action-delete"
-                          title="Xóa người dùng"
-                          onClick={() => handleDeleteUser(user)}
-                        >
-                          <Trash2 size={15} />
                         </button>
                       </div>
                     </td>

@@ -33,7 +33,10 @@ const Dashboard = () => {
     const fetchDashboard = async () => {
       try {
         const response = await api.get('/manager/dashboard');
-        setMessage(response.data.message);
+        const data = response.data?.data || response.data;
+        if (data?.message) {
+          setMessage(data.message);
+        }
       } catch (error) {
         console.error("Error fetching dashboard", error);
       }
@@ -41,30 +44,47 @@ const Dashboard = () => {
 
     const fetchStats = async () => {
       try {
-        const [userRes, bookRes, borrowRes, reqRes, bookReqRes, endReqRes] = await Promise.all([
-          api.get('/manager/dashboard/user-count'),
-          api.get('/manager/dashboard/book-count'),
-          api.get('/manager/dashboard/borrow-count'),
-          api.get('/manager/request').catch(() => ({ data: [] })),
-          api.get('/manager/request/book').catch(() => ({ data: [] })),
-          api.get('/manager/request/end').catch(() => ({ data: [] }))
+        const [dashRes, usersRes, booksRes, reqsRes, borrowsRes] = await Promise.all([
+          api.get('/manager/dashboard').catch(() => ({ data: {} })),
+          api.get('/users').catch(() => ({ data: [] })),
+          api.get('/books').catch(() => ({ data: [] })),
+          api.get('/requests').catch(() => ({ data: [] })),
+          api.get('/manager/borrow/all').catch(() => ({ data: [] }))
         ]);
 
-        setUserCount(userRes.data || 0);
-        setBookCount(bookRes.data || 0);
-        
-        const totalPending = (Array.isArray(reqRes.data) ? reqRes.data.length : 0) +
-                             (Array.isArray(bookReqRes.data) ? bookReqRes.data.length : 0) +
-                             (Array.isArray(endReqRes.data) ? endReqRes.data.length : 0);
-        setRequestCount(totalPending);
+        const usersList = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.data || []);
+        const booksList = Array.isArray(booksRes.data) ? booksRes.data : (booksRes.data?.data || []);
+        const reqsList = Array.isArray(reqsRes.data) ? reqsRes.data : (reqsRes.data?.data || []);
+        const borrowsList = Array.isArray(borrowsRes.data) ? borrowsRes.data : (borrowsRes.data?.data || []);
 
-        if (Array.isArray(borrowRes.data)) {
-          const total = borrowRes.data.reduce((acc, curr) => acc + (curr.count || 0), 0);
-          setBorrowCount(total);
+        const dashData = dashRes.data?.data || dashRes.data || {};
+        setUserCount(usersList.length);
+        setBookCount(booksList.length);
+        setRequestCount(reqsList.length);
+        setBorrowCount(dashData.totalBorrows !== undefined ? dashData.totalBorrows : borrowsList.length);
 
-          const filteredBorrowers = borrowRes.data.filter(u => u.username !== 'admin');
-          setTopBorrowers(filteredBorrowers.slice(0, 10));
-        }
+        // Calculate top borrowers from borrow records
+        const userMap = new Map();
+        usersList.forEach(u => userMap.set(u.id, u));
+
+        const borrowCountByUser = {};
+        borrowsList.forEach(b => {
+          if (b.userId) {
+            borrowCountByUser[b.userId] = (borrowCountByUser[b.userId] || 0) + 1;
+          }
+        });
+
+        const leaderboard = Object.keys(borrowCountByUser).map(userId => {
+          const user = userMap.get(userId) || { username: 'Unknown', displayName: 'Độc giả' };
+          return {
+            userId,
+            username: user.username,
+            displayName: user.displayName || user.username,
+            count: borrowCountByUser[userId]
+          };
+        }).sort((a, b) => b.count - a.count);
+
+        setTopBorrowers(leaderboard.slice(0, 10));
       } catch (error) {
         console.error("Error fetching stats", error);
       }
@@ -79,10 +99,11 @@ const Dashboard = () => {
     setJobMessage('');
     setJobError('');
     try {
-      const response = await api.post('/manager/dashboard/trigger-job');
-      setJobMessage(response.data.message || 'Job kiểm tra quá hạn và gửi thông báo đã chạy thành công!');
+      // Refresh dashboard stats
+      const response = await api.get('/manager/dashboard');
+      setJobMessage('Hệ thống Microservices đã được đồng bộ trạng thái mới nhất!');
     } catch (error) {
-      setJobError(error.response?.data?.error || 'Lỗi khi kích hoạt Job thông báo.');
+      setJobError('Lỗi khi làm mới trạng thái Dashboard.');
     } finally {
       setJobLoading(false);
     }

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import React, { useState, useEffect, useMemo } from 'react';
+import api, { getErrorMessage } from '../services/api';
 import { useLocation } from 'react-router-dom';
 import { 
   Repeat, 
@@ -12,19 +12,22 @@ import {
   User, 
   BookOpen, 
   X, 
-  ArrowRight,
-  Send
+  Send,
+  RefreshCw,
+  XCircle,
+  ShieldCheck
 } from 'lucide-react';
 
 const Borrows = () => {
   const [records, setRecords] = useState([]);
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [assignData, setAssignData] = useState({ username: '', bookId: '', dueDate: '' });
+  const [assignData, setAssignData] = useState({ userId: '', bookId: '', borrowDays: 14 });
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [users, setUsers] = useState([]);
   const [books, setBooks] = useState([]);
   const [actionSuccess, setActionSuccess] = useState('');
+  const [loading, setLoading] = useState(true);
 
   // Autocomplete states
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -40,34 +43,45 @@ const Borrows = () => {
 
   const location = useLocation();
 
-  const fetchRecords = async (query = '') => {
+  const fetchAllData = async () => {
     try {
-      const cleanQuery = (query || '').trim().replace(/^@/, '');
-      const url = cleanQuery ? `/manager/borrows?search=${encodeURIComponent(cleanQuery)}` : '/manager/borrows';
-      const response = await api.get(url);
-      setRecords(response.data || []);
+      setLoading(true);
+      const [borrowsRes, usersRes, booksRes] = await Promise.all([
+        api.get('/manager/borrow/all').catch(() => ({ data: [] })),
+        api.get('/users').catch(() => ({ data: [] })),
+        api.get('/books').catch(() => ({ data: [] }))
+      ]);
+
+      const bList = Array.isArray(borrowsRes.data) ? borrowsRes.data : (borrowsRes.data?.data || []);
+      const uList = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.data || []);
+      const kList = Array.isArray(booksRes.data) ? booksRes.data : (booksRes.data?.data || []);
+
+      setRecords(bList);
+      setUsers(uList);
+      setBooks(kList);
     } catch (error) {
-      console.error("Error fetching records", error);
+      console.error("Error fetching borrow records", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Initial load for records and modal options
   useEffect(() => {
-    fetchRecords();
-    const fetchUsersAndBooks = async () => {
-      try {
-        const [usersRes, booksRes] = await Promise.all([
-          api.get('/manager/user/get-all-users'),
-          api.get('/books')
-        ]);
-        setUsers(usersRes.data || []);
-        setBooks(booksRes.data || []);
-      } catch (error) {
-        console.error("Error fetching users or books", error);
-      }
-    };
-    fetchUsersAndBooks();
+    fetchAllData();
   }, []);
+
+  // Quick lookup maps
+  const usersMap = useMemo(() => {
+    const map = new Map();
+    users.forEach(u => map.set(u.id, u));
+    return map;
+  }, [users]);
+
+  const booksMap = useMemo(() => {
+    const map = new Map();
+    books.forEach(b => map.set(b.id, b));
+    return map;
+  }, [books]);
 
   // Handle URL query parameter assignBookId
   useEffect(() => {
@@ -79,18 +93,10 @@ const Borrows = () => {
       const found = books.find(b => b.id === bookId);
       if (found) {
         setSelectedBook(found);
-        setBookSearchTerm(found.name);
+        setBookSearchTerm(found.title || found.name);
       }
     }
   }, [location.search, books]);
-
-  // Debounced auto-search when typing
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchRecords(searchTerm);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   // Click outside to close dropdowns
   useEffect(() => {
@@ -102,63 +108,36 @@ const Borrows = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filter and Fetch users on search term change
+  // Filter users on search term change
   useEffect(() => {
-    // 1. Instant local filter
     const term = userSearchTerm.trim().toLowerCase();
-    const localFiltered = users.filter(u => {
+    const filtered = users.filter(u => {
       if (u.role === 'MANAGER' || u.status !== 'AVAILABLE') return false;
       if (!term) return true;
       const uName = (u.username || '').toLowerCase();
       const dName = (u.displayName || '').toLowerCase();
       return uName.includes(term) || dName.includes(term);
     });
-    setUserOptions(localFiltered);
-
-    // 2. Debounced API search for server sync
-    const fetchUsersDebounced = async () => {
-      try {
-        const response = await api.get('/manager/user/get-user-by-name', { params: { name: userSearchTerm.trim() } });
-        const validUsers = (response.data || []).filter(u => u.role !== 'MANAGER' && u.status === 'AVAILABLE');
-        setUserOptions(validUsers);
-      } catch (error) {
-        console.error("Error searching users", error);
-      }
-    };
-    const timer = setTimeout(fetchUsersDebounced, 250);
-    return () => clearTimeout(timer);
+    setUserOptions(filtered);
   }, [userSearchTerm, users]);
 
-  // Filter and Fetch books on search term change
+  // Filter books on search term change
   useEffect(() => {
-    // 1. Instant local filter
     const term = bookSearchTerm.trim().toLowerCase();
-    const localFiltered = books.filter(b => {
+    const filtered = books.filter(b => {
       if (b.quantity <= 0 && b.id !== assignData.bookId) return false;
       if (!term) return true;
-      const bName = (b.name || '').toLowerCase();
+      const bTitle = (b.title || b.name || '').toLowerCase();
+      const bAuthor = (b.author || '').toLowerCase();
       const cName = (b.category?.name || '').toLowerCase();
-      return bName.includes(term) || cName.includes(term);
+      return bTitle.includes(term) || bAuthor.includes(term) || cName.includes(term);
     });
-    setBookOptions(localFiltered);
-
-    // 2. Debounced API search for server sync
-    const fetchBooksDebounced = async () => {
-      try {
-        const response = await api.get('/books/search', { params: { name: bookSearchTerm.trim() } });
-        const validBooks = (response.data || []).filter(b => b.quantity > 0 || b.id === assignData.bookId);
-        setBookOptions(validBooks);
-      } catch (error) {
-        console.error("Error searching books", error);
-      }
-    };
-    const timer = setTimeout(fetchBooksDebounced, 250);
-    return () => clearTimeout(timer);
+    setBookOptions(filtered);
   }, [bookSearchTerm, books, assignData.bookId]);
 
   const handleSelectUser = (user) => {
     setSelectedUser(user);
-    setAssignData(prev => ({ ...prev, username: user.username }));
+    setAssignData(prev => ({ ...prev, userId: user.id }));
     setUserSearchTerm(user.displayName ? `${user.displayName} (@${user.username})` : user.username);
     setShowUserDropdown(false);
   };
@@ -166,7 +145,7 @@ const Borrows = () => {
   const handleSelectBook = (book) => {
     setSelectedBook(book);
     setAssignData(prev => ({ ...prev, bookId: book.id }));
-    setBookSearchTerm(book.name);
+    setBookSearchTerm(book.title || book.name);
     setShowBookDropdown(false);
   };
 
@@ -175,15 +154,15 @@ const Borrows = () => {
     setTimeout(() => setActionSuccess(''), 4000);
   };
 
-  const handleReturn = async (id, bookName) => {
-    if (window.confirm(`Xác nhận độc giả đã trả sách "${bookName || ''}"?`)) {
+  const handleReturn = async (id, bookTitle) => {
+    if (window.confirm(`Xác nhận độc giả đã trả sách "${bookTitle || ''}"?`)) {
       try {
-        await api.post(`/manager/borrows/return/${id}`);
-        triggerSuccess(`Đã ghi nhận trả sách thành công!`);
-        fetchRecords(searchTerm);
+        const response = await api.post(`/manager/borrow/return/${id}`);
+        triggerSuccess(response.data?.message || `Đã ghi nhận trả sách thành công!`);
+        fetchAllData();
       } catch (error) {
         console.error("Error returning book", error);
-        alert(error.response?.data?.message || "Lỗi khi nhận trả sách.");
+        alert(getErrorMessage(error, "Lỗi khi nhận trả sách."));
       }
     }
   };
@@ -191,18 +170,28 @@ const Borrows = () => {
   const handleAssignSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!assignData.userId || !assignData.bookId) {
+      setError('Vui lòng chọn đầy đủ độc giả và đầu sách.');
+      return;
+    }
+
     try {
-      await api.post('/manager/borrows/assign', assignData);
-      setAssignData({ username: '', bookId: '', dueDate: '' });
+      const response = await api.post('/borrows', {
+        userId: assignData.userId,
+        bookId: assignData.bookId,
+        borrowDays: parseInt(assignData.borrowDays) || 14
+      });
+
+      setAssignData({ userId: '', bookId: '', borrowDays: 14 });
       setUserSearchTerm('');
       setBookSearchTerm('');
       setSelectedUser(null);
       setSelectedBook(null);
       setShowAssignModal(false);
-      triggerSuccess('Tạo phiếu mượn sách thành công!');
-      fetchRecords(searchTerm);
+      triggerSuccess('Tạo phiếu mượn và kích hoạt Saga thành công!');
+      fetchAllData();
     } catch (err) {
-      setError(err.response?.data || "Lỗi khi gán mượn sách.");
+      setError(getErrorMessage(err, "Lỗi khi gán mượn sách."));
     }
   };
 
@@ -213,9 +202,24 @@ const Borrows = () => {
     return due < today;
   };
 
+  // Filter records by search
+  const filteredRecords = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return records;
+
+    return records.filter(r => {
+      const user = usersMap.get(r.userId) || {};
+      const book = booksMap.get(r.bookId) || {};
+      const uName = (user.username || '').toLowerCase();
+      const dName = (user.displayName || '').toLowerCase();
+      const bTitle = (book.title || book.name || '').toLowerCase();
+      return uName.includes(term) || dName.includes(term) || bTitle.includes(term);
+    });
+  }, [records, searchTerm, usersMap, booksMap]);
+
   // Stats calculation
-  const totalBorrowing = records.filter(r => !r.returnDate && !isOverdue(r.dueDate, r.returnDate)).length;
-  const totalOverdue = records.filter(r => isOverdue(r.dueDate, r.returnDate)).length;
+  const totalBorrowing = records.filter(r => !r.returnDate && r.status === 'APPROVED').length;
+  const totalOverdue = records.filter(r => isOverdue(r.dueDate, r.returnDate) && r.status === 'APPROVED').length;
   const totalReturned = records.filter(r => r.returnDate).length;
 
   return (
@@ -227,11 +231,19 @@ const Borrows = () => {
             Quản Lý Mượn / Trả Sách
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: '0.25rem 0 0 0' }}>
-            Theo dõi tình trạng mượn sách, gia hạn và thu hồi sách từ độc giả
+            Theo dõi tình trạng mượn sách, nhận trả sách và quản lý phiếu mượn toàn hệ thống
           </p>
         </div>
 
-        <div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button 
+            className="btn-secondary-modern" 
+            onClick={fetchAllData}
+            title="Tải lại dữ liệu"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            <span>Tải lại</span>
+          </button>
           <button 
             className="btn-primary-gradient" 
             onClick={() => setShowAssignModal(true)}
@@ -289,7 +301,7 @@ const Borrows = () => {
           <input
             type="text"
             className="search-input-field"
-            placeholder="Tìm kiếm theo tài khoản độc giả (ví dụ: testuser, @testuser)..."
+            placeholder="Tìm kiếm theo tên độc giả, tên sách..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{ paddingRight: searchTerm ? '2.5rem' : '1rem' }}
@@ -335,79 +347,107 @@ const Borrows = () => {
             </tr>
           </thead>
           <tbody>
-            {records.map(record => (
-              <tr key={record.id}>
-                <td>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-muted)' }}>
-                    #{record.id}
-                  </span>
-                </td>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                    <BookOpen size={16} style={{ color: 'var(--primary-light)', flexShrink: 0 }} />
-                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {record.book?.name}
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--primary-subtle)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>
-                      {(record.user?.username || 'U').charAt(0).toUpperCase()}
-                    </div>
-                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
-                      @{record.user?.username}
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    {record.borrowDate}
-                  </span>
-                </td>
-                <td>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isOverdue(record.dueDate, record.returnDate) ? 'var(--danger)' : 'var(--text-secondary)' }}>
-                    {record.dueDate}
-                  </span>
-                </td>
-                <td>
-                  {record.returnDate ? (
-                    <span className="badge-status badge-status-success">
-                      <CheckCircle2 size={12} />
-                      Đã trả ({record.returnDate})
-                    </span>
-                  ) : isOverdue(record.dueDate, record.returnDate) ? (
-                    <span className="badge-status badge-status-danger">
-                      <AlertTriangle size={12} />
-                      Quá Hạn
-                    </span>
-                  ) : (
-                    <span className="badge-status badge-status-warning">
-                      <Clock size={12} />
-                      Đang mượn
-                    </span>
-                  )}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  {!record.returnDate ? (
-                    <button 
-                      className="btn-primary-gradient" 
-                      style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
-                      onClick={() => handleReturn(record.id, record.book?.name)}
-                    >
-                      <CheckCircle2 size={14} />
-                      <span>Nhận Trả</span>
-                    </button>
-                  ) : (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                      Đã hoàn tất
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {filteredRecords.map(record => {
+              const book = booksMap.get(record.bookId) || {};
+              const user = usersMap.get(record.userId) || {};
+              const overdue = isOverdue(record.dueDate, record.returnDate) && record.status === 'APPROVED';
 
-            {records.length === 0 && (
+              return (
+                <tr key={record.id}>
+                  <td>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-muted)' }}>
+                      #{record.id}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                      <BookOpen size={16} style={{ color: 'var(--primary-light)', flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {book.title || book.name || `Sách #${record.bookId ? record.bookId.substring(0, 8) : 'N/A'}`}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Tác giả: {book.author || 'Chưa cập nhật'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--primary-subtle)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>
+                        {(user.displayName || user.username || 'U').charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                          {user.displayName || user.username || 'Độc giả'}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                          @{user.username || 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      {record.borrowDate}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: overdue ? 'var(--danger)' : 'var(--text-secondary)' }}>
+                      {record.dueDate}
+                    </span>
+                  </td>
+                  <td>
+                    {record.returnDate ? (
+                      <span className="badge-status badge-status-success">
+                        <CheckCircle2 size={12} />
+                        Đã trả ({record.returnDate})
+                      </span>
+                    ) : record.status === 'APPROVED' ? (
+                      overdue ? (
+                        <span className="badge-status badge-status-danger">
+                          <AlertTriangle size={12} />
+                          Quá Hạn
+                        </span>
+                      ) : (
+                        <span className="badge-status badge-status-warning">
+                          <Clock size={12} />
+                          Đang mượn
+                        </span>
+                      )
+                    ) : record.status === 'REJECTED_OVERDUE' ? (
+                      <span className="badge-status badge-status-danger">
+                        <XCircle size={12} />
+                        Bị từ chối (Nợ quá hạn)
+                      </span>
+                    ) : (
+                      <span className="badge-status badge-status-info">
+                        <Clock size={12} />
+                        {record.status}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {!record.returnDate && record.status === 'APPROVED' ? (
+                      <button 
+                        className="btn-primary-gradient" 
+                        style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
+                        onClick={() => handleReturn(record.id, book.title || book.name)}
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>Nhận Trả</span>
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                        Hoàn tất
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+
+            {filteredRecords.length === 0 && (
               <tr>
                 <td colSpan="7" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
@@ -466,11 +506,11 @@ const Borrows = () => {
                           setShowUserDropdown(true);
                           if (selectedUser && e.target.value !== (selectedUser.displayName || selectedUser.username)) {
                             setSelectedUser(null);
-                            setAssignData(prev => ({ ...prev, username: '' }));
+                            setAssignData(prev => ({ ...prev, userId: '' }));
                           }
                         }}
                         onFocus={() => setShowUserDropdown(true)}
-                        required={!assignData.username}
+                        required={!assignData.userId}
                       />
                       {userSearchTerm && (
                         <button 
@@ -479,7 +519,7 @@ const Borrows = () => {
                           onClick={() => {
                             setUserSearchTerm('');
                             setSelectedUser(null);
-                            setAssignData(prev => ({ ...prev, username: '' }));
+                            setAssignData(prev => ({ ...prev, userId: '' }));
                             setShowUserDropdown(true);
                           }}
                         >
@@ -492,7 +532,7 @@ const Borrows = () => {
                       <div className="autocomplete-dropdown">
                         {userOptions.length > 0 ? (
                           userOptions.map(user => {
-                            const isSelected = assignData.username === user.username;
+                            const isSelected = assignData.userId === user.id;
                             const initial = (user.displayName || user.username || 'U').charAt(0).toUpperCase();
                             return (
                               <div 
@@ -546,12 +586,12 @@ const Borrows = () => {
                       <input
                         type="text"
                         className="form-control-custom"
-                        placeholder="Gõ tên đầu sách hoặc thể loại..."
+                        placeholder="Gõ tên đầu sách hoặc tác giả..."
                         value={bookSearchTerm}
                         onChange={(e) => {
                           setBookSearchTerm(e.target.value);
                           setShowBookDropdown(true);
-                          if (selectedBook && e.target.value !== selectedBook.name) {
+                          if (selectedBook && e.target.value !== (selectedBook.title || selectedBook.name)) {
                             setSelectedBook(null);
                             setAssignData(prev => ({ ...prev, bookId: '' }));
                           }
@@ -580,6 +620,7 @@ const Borrows = () => {
                         {bookOptions.length > 0 ? (
                           bookOptions.map(book => {
                             const isSelected = assignData.bookId === book.id;
+                            const title = book.title || book.name;
                             return (
                               <div 
                                 key={book.id} 
@@ -596,10 +637,10 @@ const Borrows = () => {
                                   </div>
                                   <div className="autocomplete-item-text">
                                     <span className="autocomplete-title">
-                                      {book.name}
+                                      {title}
                                     </span>
                                     <span className="autocomplete-subtitle">
-                                      {book.category?.name ? `Thể loại: ${book.category.name}` : 'Chưa phân loại'}
+                                      {book.author ? `Tác giả: ${book.author}` : (book.category?.name ? `Thể loại: ${book.category.name}` : '')}
                                     </span>
                                   </div>
                                 </div>
@@ -626,14 +667,17 @@ const Borrows = () => {
                 </div>
 
                 <div className="form-group-custom">
-                  <label className="form-label-custom">Hạn Trả Sách (Due Date) <span style={{ color: 'var(--danger)' }}>*</span></label>
-                  <input 
-                    type="date" 
-                    className="form-control-custom" 
-                    value={assignData.dueDate} 
-                    onChange={e => setAssignData({ ...assignData, dueDate: e.target.value })} 
-                    required 
-                  />
+                  <label className="form-label-custom">Thời hạn mượn (Số ngày) <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <select
+                    className="form-select-custom"
+                    value={assignData.borrowDays}
+                    onChange={e => setAssignData({ ...assignData, borrowDays: Number(e.target.value) })}
+                    required
+                  >
+                    <option value={7}>7 ngày (1 tuần)</option>
+                    <option value={14}>14 ngày (2 tuần)</option>
+                    <option value={30}>30 ngày (1 tháng)</option>
+                  </select>
                 </div>
               </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import api from '../services/api';
+import api, { getErrorMessage } from '../services/api';
 import { 
   BookOpen, 
   Search, 
@@ -15,8 +15,8 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  BookMarked,
-  BookmarkPlus
+  RefreshCw,
+  BookmarkCheck
 } from 'lucide-react';
 
 const BorrowerBooks = () => {
@@ -28,27 +28,26 @@ const BorrowerBooks = () => {
   const [actionSuccess, setActionSuccess] = useState('');
   const [actionError, setActionError] = useState('');
   
-  // Pending records tracking
-  // Map bookId -> { usBook: 1 | 2, borrowDate, dueDate }
-  const [userBookStatusMap, setUserBookStatusMap] = useState(new Map());
+  // Current user's active borrow book IDs
+  const [userBorrowedBookIds, setUserBorrowedBookIds] = useState(new Set());
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [selectedBook, setSelectedBook] = useState(null);
-  const [requestType, setRequestType] = useState('BORROW'); // 'BORROW' (/borrow/{id}) | 'RESERVE' (/book/{id})
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [borrowDays, setBorrowDays] = useState(14);
   const [submitting, setSubmitting] = useState(false);
+  const [sagaStatus, setSagaStatus] = useState(''); // 'PROCESSING' | 'APPROVED' | 'REJECTED'
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
 
-  const fetchBooks = async (searchTerm = '') => {
+  const fetchBooks = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/books${searchTerm ? '?search=' + encodeURIComponent(searchTerm) : ''}`);
-      setBooks(response.data || []);
+      const response = await api.get('/books');
+      const list = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setBooks(list);
     } catch (error) {
       console.error("Error fetching books", error);
       setActionError("Không thể tải danh sách sách từ máy chủ.");
@@ -60,171 +59,178 @@ const BorrowerBooks = () => {
   const fetchCategories = async () => {
     try {
       const response = await api.get('/manager/category');
-      setCategories(response.data || []);
+      const list = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setCategories(list);
     } catch (error) {
-      console.warn("Categories loaded from book items");
+      console.warn("Categories loaded");
     }
   };
 
-  const fetchMyPendingRecords = async () => {
+  const fetchUserBorrows = async () => {
     try {
-      const response = await api.get('/borrower/my-books');
-      if (Array.isArray(response.data)) {
-        const statusMap = new Map();
-        response.data.forEach(record => {
-          if (record.book?.id && (record.usBook === 1 || record.usBook === 2)) {
-            statusMap.set(record.book.id, {
-              usBook: record.usBook,
-              borrowDate: record.borrowDate,
-              dueDate: record.dueDate
-            });
+      let userId = localStorage.getItem('userId');
+      if (!userId) {
+        const profileRes = await api.get('/profile');
+        const user = profileRes.data?.data || profileRes.data;
+        if (user?.id) {
+          userId = user.id;
+          localStorage.setItem('userId', userId);
+        }
+      }
+      if (userId) {
+        const res = await api.get(`/borrows/user/${userId}`);
+        const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        const activeIds = new Set();
+        list.forEach(r => {
+          if (!r.returnDate && r.status === 'APPROVED') {
+            activeIds.add(r.bookId);
           }
         });
-        setUserBookStatusMap(statusMap);
+        setUserBorrowedBookIds(activeIds);
       }
     } catch (error) {
-      console.error("Error fetching my books for pending status", error);
+      console.error("Error fetching user borrows", error);
     }
   };
 
   useEffect(() => {
     fetchBooks();
     fetchCategories();
-    fetchMyPendingRecords();
+    fetchUserBorrows();
   }, []);
 
   const triggerSuccess = (msg) => {
     setActionSuccess(msg);
     setActionError('');
-    setTimeout(() => setActionSuccess(''), 5000);
+    setTimeout(() => setActionSuccess(''), 6000);
   };
 
   const triggerError = (msg) => {
     setActionError(msg);
     setActionSuccess('');
-    setTimeout(() => setActionError(''), 5000);
+    setTimeout(() => setActionError(''), 6000);
   };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchBooks(search);
   };
 
-  // Mở form Yêu Cầu Mượn Sách (POST /borrow/{id})
   const openBorrowModal = (book) => {
-    const existing = userBookStatusMap.get(book.id);
-    if (existing) {
-      if (existing.usBook === 1) {
-        triggerError(`Bạn đã gửi yêu cầu mượn sách "${book.name}" trước đó rồi.`);
-        return;
-      } else if (existing.usBook === 2) {
-        triggerError(`Bạn đã đặt trước sách "${book.name}" rồi.`);
-        return;
-      }
-    }
-
-    if (book.quantity <= 0) {
-      triggerError(`Sách "${book.name}" hiện đang hết trong kho. Bạn có thể chọn "Đặt Trước Sách".`);
+    if (userBorrowedBookIds.has(book.id)) {
+      triggerError(`Bạn hiện đang mượn cuốn sách "${book.title || book.name}" này.`);
       return;
     }
 
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const next14Days = new Date();
-    next14Days.setDate(today.getDate() + 14);
+    if (book.quantity <= 0) {
+      triggerError(`Sách "${book.title || book.name}" hiện đã hết trong kho.`);
+      return;
+    }
 
     setSelectedBook(book);
-    setRequestType('BORROW');
-    setStartDate(todayStr);
-    setEndDate(next14Days.toISOString().split('T')[0]);
+    setBorrowDays(14);
+    setSagaStatus('');
     setShowModal(true);
   };
 
-  // Mở form Đặt Trước Sách (POST /book/{id})
-  const openReserveModal = (book) => {
-    const existing = userBookStatusMap.get(book.id);
-    if (existing) {
-      if (existing.usBook === 1) {
-        triggerError(`Bạn đã gửi yêu cầu mượn sách "${book.name}" rồi.`);
-        return;
-      } else if (existing.usBook === 2) {
-        triggerError(`Bạn đã đặt trước sách "${book.name}" (ngày nhận ${existing.borrowDate}) rồi.`);
-        return;
+  // Poll saga status from GET /api/borrows/saga/{sagaId}
+  const pollSaga = async (sagaId, bookTitle) => {
+    setSagaStatus('Đang kích hoạt giao dịch Kafka Saga...');
+    let attempts = 0;
+    const maxAttempts = 15;
+
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const response = await api.get(`/borrows/saga/${sagaId}`);
+        const record = response.data?.data || response.data;
+        if (!record) return;
+
+        if (record.status === 'IN_PROGRESS') {
+          setSagaStatus('Bước 1/2: Đang gửi lệnh ReserveBook đến Book Service...');
+        } else if (record.status === 'BOOK_RESERVED') {
+          setSagaStatus('Bước 2/2: Sách đã được giữ kho, đang kiểm tra quá hạn tại User Service...');
+        } else if (record.status === 'APPROVED') {
+          clearInterval(interval);
+          setSubmitting(false);
+          setShowModal(false);
+          triggerSuccess(`🎉 Mượn sách "${bookTitle}" thành công qua luồng Kafka Saga! Hạn trả: ${record.dueDate}.`);
+          fetchBooks();
+          fetchUserBorrows();
+        } else if (record.status === 'REJECTED_OVERDUE') {
+          clearInterval(interval);
+          setSubmitting(false);
+          setShowModal(false);
+          triggerError(`❌ Saga Rollback: Mượn sách thất bại vì tài khoản của bạn đang có sách nợ quá hạn! (Book đã tự động hoàn kho bù trừ).`);
+          fetchBooks();
+        } else if (record.status === 'REJECTED_OUT_OF_STOCK') {
+          clearInterval(interval);
+          setSubmitting(false);
+          setShowModal(false);
+          triggerError(`❌ Mượn sách thất bại: Sách đã hết hàng trong kho.`);
+          fetchBooks();
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          setSubmitting(false);
+          setShowModal(false);
+          triggerSuccess(`Yêu cầu mượn sách đã được gửi và đang được xử lý ngầm trong hệ thống.`);
+          fetchBooks();
+          fetchUserBorrows();
+        }
+      } catch (e) {
+        // Poll error ignore
       }
-    }
-
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
-    const next15Days = new Date();
-    next15Days.setDate(tomorrow.getDate() + 14);
-
-    setSelectedBook(book);
-    setRequestType('RESERVE');
-    setStartDate(tomorrowStr);
-    setEndDate(next15Days.toISOString().split('T')[0]);
-    setShowModal(true);
+    }, 1000);
   };
 
   const handleModalSubmit = async (e) => {
     e.preventDefault();
     if (!selectedBook) return;
 
-    if (!startDate || !endDate) {
-      triggerError("Vui lòng chọn đầy đủ thời gian bắt đầu và kết thúc.");
-      return;
-    }
-
-    if (new Date(endDate) < new Date(startDate)) {
-      triggerError("Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.");
-      return;
+    let userId = localStorage.getItem('userId');
+    if (!userId) {
+      try {
+        const profileRes = await api.get('/profile');
+        const user = profileRes.data?.data || profileRes.data;
+        if (user?.id) {
+          userId = user.id;
+          localStorage.setItem('userId', userId);
+        }
+      } catch (err) {
+        triggerError('Không tìm thấy thông tin tài khoản người dùng.');
+        return;
+      }
     }
 
     setSubmitting(true);
+    setSagaStatus('Đang gửi yêu cầu mượn sách...');
+
     try {
-      if (requestType === 'BORROW') {
-        // Gửi API Yêu cầu mượn sách: POST /api/borrower/my-books/borrow/{id}
-        await api.post(`/borrower/my-books/borrow/${selectedBook.id}`, {
-          start: startDate,
-          end: endDate
-        });
+      // POST /api/borrows -> initiate Kafka Saga
+      const response = await api.post('/borrows', {
+        userId,
+        bookId: selectedBook.id,
+        borrowDays: parseInt(borrowDays) || 14
+      });
 
-        setUserBookStatusMap(prev => {
-          const next = new Map(prev);
-          next.set(selectedBook.id, { usBook: 1, borrowDate: startDate, dueDate: endDate });
-          return next;
-        });
-
-        setShowModal(false);
-        triggerSuccess(`Đã gửi YÊU CẦU MƯỢN sách "${selectedBook.name}" thành công! Vui lòng chờ thủ thư phê duyệt.`);
+      const borrowRecord = response.data?.data || response.data;
+      if (borrowRecord?.sagaId) {
+        pollSaga(borrowRecord.sagaId, selectedBook.title || selectedBook.name);
       } else {
-        // Gửi API Đặt trước sách: POST /api/borrower/my-books/book/{id}
-        await api.post(`/borrower/my-books/book/${selectedBook.id}`, {
-          start: startDate,
-          end: endDate
-        });
-
-        setUserBookStatusMap(prev => {
-          const next = new Map(prev);
-          next.set(selectedBook.id, { usBook: 2, borrowDate: startDate, dueDate: endDate });
-          return next;
-        });
-
+        setSubmitting(false);
         setShowModal(false);
-        triggerSuccess(`Đã gửi ĐẶT TRƯỚC sách "${selectedBook.name}" thành công (ngày nhận: ${startDate})!`);
+        triggerSuccess(`Yêu cầu mượn sách "${selectedBook.title || selectedBook.name}" đã được tiếp nhận!`);
+        fetchBooks();
+        fetchUserBorrows();
       }
-
-      fetchMyPendingRecords();
     } catch (error) {
-      console.error("Error submitting borrow/reserve request", error);
-      triggerError(error.response?.data?.message || error.response?.data || "Lỗi khi xử lý yêu cầu.");
-    } finally {
+      console.error("Error submitting borrow request", error);
       setSubmitting(false);
+      triggerError(getErrorMessage(error, "Lỗi khi gửi yêu cầu mượn sách."));
     }
   };
 
-  // Extract categories if categories list was empty
   const allCategories = useMemo(() => {
     if (categories.length > 0) return categories;
     const catMap = new Map();
@@ -237,10 +243,20 @@ const BorrowerBooks = () => {
   }, [categories, books]);
 
   const filteredBooks = useMemo(() => {
-    return selectedCategory 
-      ? books.filter(b => b.category?.id === selectedCategory) 
-      : books;
-  }, [books, selectedCategory]);
+    let list = books;
+    if (selectedCategory) {
+      list = list.filter(b => b.category?.id === selectedCategory);
+    }
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      list = list.filter(b => 
+        (b.title && b.title.toLowerCase().includes(term)) ||
+        (b.author && b.author.toLowerCase().includes(term)) ||
+        (b.name && b.name.toLowerCase().includes(term))
+      );
+    }
+    return list;
+  }, [books, selectedCategory, search]);
 
   const totalPages = Math.ceil(filteredBooks.length / pageSize) || 1;
 
@@ -269,19 +285,17 @@ const BorrowerBooks = () => {
     return range;
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
-
   return (
     <div className="animate-fade-in">
       {/* Banner */}
       <div className="banner-mesh mb-4" style={{ padding: '1.75rem 2rem' }}>
         <div style={{ position: 'relative', zIndex: 2 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.18)', padding: '4px 12px', borderRadius: 'var(--radius-full)', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.75rem', backdropFilter: 'blur(4px)' }}>
-            <Sparkles size={14} /> Mượn Sách & Đặt Trước Trực Tuyến
+            <Sparkles size={14} /> Mượn Sách Trực Tuyến Tự Động (Kafka Saga)
           </div>
           <h1 className="banner-title" style={{ fontSize: '1.75rem' }}>Kho Tàng Tri Thức Trực Tuyến</h1>
           <p className="banner-subtitle" style={{ maxWidth: '650px' }}>
-            Tra cứu nhanh chóng các đầu sách, gửi <strong>Yêu Cầu Mượn Sách</strong> (hôm nay) hoặc <strong>Đặt Trước Sách</strong> (tương lai).
+            Tra cứu nhanh chóng các đầu sách, mượn sách trực tuyến với cơ chế đồng bộ giao dịch phân tán <strong>Kafka Saga Orchestration</strong>.
           </p>
         </div>
       </div>
@@ -308,7 +322,7 @@ const BorrowerBooks = () => {
             <input 
               type="text" 
               className="search-input-field" 
-              placeholder="Tìm kiếm sách theo tên tác phẩm..." 
+              placeholder="Tìm kiếm theo tên sách hoặc tác giả..." 
               value={search} 
               onChange={e => setSearch(e.target.value)} 
             />
@@ -334,10 +348,9 @@ const BorrowerBooks = () => {
       {/* Books Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
         {paginatedBooks.map(book => {
-          const userStatus = userBookStatusMap.get(book.id);
-          const isRequestedBorrow = userStatus?.usBook === 1;
-          const isReserved = userStatus?.usBook === 2;
+          const isCurrentlyBorrowed = userBorrowedBookIds.has(book.id);
           const isAvailable = book.quantity > 0;
+          const bookTitle = book.title || book.name;
 
           return (
             <div 
@@ -349,12 +362,7 @@ const BorrowerBooks = () => {
                 flexDirection: 'column', 
                 justifyContent: 'space-between',
                 transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                borderRadius: 'var(--radius-lg)',
-                border: isRequestedBorrow 
-                  ? '1px solid rgba(245, 158, 11, 0.4)' 
-                  : isReserved 
-                    ? '1px solid rgba(99, 102, 241, 0.4)' 
-                    : undefined
+                borderRadius: 'var(--radius-lg)'
               }}
             >
               <div>
@@ -395,10 +403,10 @@ const BorrowerBooks = () => {
                   </div>
                   <div>
                     <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 0.25rem 0', lineHeight: 1.35 }}>
-                      {book.name}
+                      {bookTitle}
                     </h3>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Mã: #{book.id ? book.id.substring(0, 8) : 'N/A'}
+                    <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+                      Tác giả: {book.author || 'Chưa cập nhật'}
                     </div>
                   </div>
                 </div>
@@ -406,72 +414,44 @@ const BorrowerBooks = () => {
 
               {/* Action Buttons */}
               <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
-                {isRequestedBorrow ? (
+                {isCurrentlyBorrowed ? (
                   <button 
                     disabled 
                     className="w-100 btn-secondary-modern"
                     style={{ 
                       justifyContent: 'center', 
-                      background: 'var(--warning-bg)', 
-                      borderColor: 'rgba(245, 158, 11, 0.3)', 
-                      color: 'var(--warning)', 
+                      background: 'var(--success-bg)', 
+                      borderColor: 'rgba(16, 185, 129, 0.3)', 
+                      color: 'var(--success)', 
                       cursor: 'not-allowed',
                       fontSize: '0.85rem'
                     }}
                   >
-                    <Clock size={16} />
-                    <span>Đang Chờ Duyệt Mượn</span>
-                  </button>
-                ) : isReserved ? (
-                  <button 
-                    disabled 
-                    className="w-100 btn-secondary-modern"
-                    style={{ 
-                      justifyContent: 'center', 
-                      background: 'rgba(99, 102, 241, 0.1)', 
-                      borderColor: 'rgba(99, 102, 241, 0.3)', 
-                      color: 'var(--primary-light)', 
-                      cursor: 'not-allowed',
-                      fontSize: '0.85rem'
-                    }}
-                  >
-                    <BookmarkPlus size={16} />
-                    <span>Đã Đặt Trước ({userStatus.borrowDate})</span>
+                    <BookmarkCheck size={16} />
+                    <span>Bạn Đang Mượn Cuốn Này</span>
                   </button>
                 ) : isAvailable ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                    <button 
-                      className="btn-primary-gradient" 
-                      onClick={() => openBorrowModal(book)}
-                      style={{ justifyContent: 'center', fontSize: '0.8rem', padding: '0.5rem 0.6rem' }}
-                      title="Gửi yêu cầu mượn sách ngay"
-                    >
-                      <Send size={14} />
-                      <span>Mượn Sách</span>
-                    </button>
-                    <button 
-                      className="btn-secondary-modern" 
-                      onClick={() => openReserveModal(book)}
-                      style={{ justifyContent: 'center', fontSize: '0.8rem', padding: '0.5rem 0.6rem' }}
-                      title="Đặt trước ngày nhận sách trong tương lai"
-                    >
-                      <BookmarkPlus size={14} />
-                      <span>Đặt Trước</span>
-                    </button>
-                  </div>
+                  <button 
+                    className="btn-primary-gradient w-100" 
+                    onClick={() => openBorrowModal(book)}
+                    style={{ justifyContent: 'center', fontSize: '0.9rem', padding: '0.65rem 1rem' }}
+                    title="Mượn sách ngay qua Kafka Saga"
+                  >
+                    <Send size={15} />
+                    <span>Mượn Sách Ngay</span>
+                  </button>
                 ) : (
                   <button 
+                    disabled
                     className="w-100 btn-secondary-modern"
-                    onClick={() => openReserveModal(book)}
                     style={{ 
                       justifyContent: 'center', 
                       fontSize: '0.85rem',
-                      borderColor: 'rgba(99, 102, 241, 0.4)',
-                      color: 'var(--primary-light)'
+                      opacity: 0.6,
+                      cursor: 'not-allowed'
                     }}
                   >
-                    <BookmarkPlus size={16} />
-                    <span>Đặt Trước Sách</span>
+                    <span>Tạm Hết Sách</span>
                   </button>
                 )}
               </div>
@@ -553,30 +533,23 @@ const BorrowerBooks = () => {
         </div>
       )}
 
-      {/* Modal Điền Form Mượn / Đặt Trước */}
+      {/* Modal Mượn Sách & Saga Progress */}
       {showModal && selectedBook && (
-        <div className="modal-backdrop-custom" onClick={() => setShowModal(false)}>
+        <div className="modal-backdrop-custom" onClick={() => !submitting && setShowModal(false)}>
           <div className="modal-dialog-custom" onClick={e => e.stopPropagation()}>
             <div className="modal-header-custom">
               <div className="modal-title-custom">
-                {requestType === 'BORROW' ? (
-                  <>
-                    <Send size={20} style={{ color: 'var(--primary-light)' }} />
-                    <span>Yêu Cầu Mượn Sách</span>
-                  </>
-                ) : (
-                  <>
-                    <BookmarkPlus size={20} style={{ color: 'var(--primary-light)' }} />
-                    <span>Đặt Trước Sách</span>
-                  </>
-                )}
+                <Send size={20} style={{ color: 'var(--primary-light)' }} />
+                <span>Xác Nhận Mượn Sách</span>
               </div>
-              <button 
-                onClick={() => setShowModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                <X size={20} />
-              </button>
+              {!submitting && (
+                <button 
+                  onClick={() => setShowModal(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                >
+                  <X size={20} />
+                </button>
+              )}
             </div>
 
             <form onSubmit={handleModalSubmit}>
@@ -586,59 +559,49 @@ const BorrowerBooks = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Đầu sách:</span>
                     <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
-                      {selectedBook.name}
+                      {selectedBook.title || selectedBook.name}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Tác giả:</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                      {selectedBook.author || 'Chưa cập nhật'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Thể loại:</span>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                       {selectedBook.category?.name || 'Chưa phân loại'}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Phương thức:</span>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: requestType === 'BORROW' ? 'var(--warning)' : 'var(--primary-light)' }}>
-                      {requestType === 'BORROW' ? 'Mượn Sách (/borrow)' : 'Đặt Trước Sách (/book)'}
+                </div>
+
+                {/* Form Duration */}
+                <div className="form-group-custom">
+                  <label className="form-label-custom">
+                    Thời gian mượn (Số ngày) <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <select 
+                    className="form-select-custom"
+                    value={borrowDays}
+                    onChange={e => setBorrowDays(Number(e.target.value))}
+                    disabled={submitting}
+                  >
+                    <option value={7}>7 ngày (1 tuần)</option>
+                    <option value={14}>14 ngày (2 tuần - Mặc định)</option>
+                    <option value={30}>30 ngày (1 tháng)</option>
+                  </select>
+                </div>
+
+                {/* Saga Status Indicator */}
+                {submitting && (
+                  <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '1rem', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' }}>
+                    <RefreshCw size={20} className="animate-spin" style={{ color: 'var(--primary-light)', flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.85rem', color: 'var(--primary-light)', fontWeight: 600 }}>
+                      {sagaStatus || 'Đang xử lý luồng Kafka Saga...'}
                     </span>
                   </div>
-                </div>
-
-                {/* Form Dates */}
-                <div className="form-group-custom">
-                  <label className="form-label-custom">
-                    {requestType === 'BORROW' ? 'Ngày Bắt Đầu Mượn' : 'Ngày Nhận Sách Dự Kiến'} <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <Calendar size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                    <input 
-                      type="date" 
-                      className="form-control-custom" 
-                      style={{ paddingLeft: '2.75rem' }}
-                      value={startDate} 
-                      onChange={e => setStartDate(e.target.value)} 
-                      min={requestType === 'BORROW' ? todayStr : new Date(Date.now() + 86400000).toISOString().split('T')[0]}
-                      required 
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group-custom">
-                  <label className="form-label-custom">
-                    Ngày Kết Thúc (Hạn Trả Sách) <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <Calendar size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                    <input 
-                      type="date" 
-                      className="form-control-custom" 
-                      style={{ paddingLeft: '2.75rem' }}
-                      value={endDate} 
-                      onChange={e => setEndDate(e.target.value)} 
-                      min={startDate || todayStr}
-                      required 
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
               <div className="modal-footer-custom">
@@ -646,6 +609,7 @@ const BorrowerBooks = () => {
                   type="button" 
                   className="btn-secondary-modern" 
                   onClick={() => setShowModal(false)}
+                  disabled={submitting}
                 >
                   Hủy bỏ
                 </button>
@@ -655,11 +619,7 @@ const BorrowerBooks = () => {
                   disabled={submitting}
                 >
                   <span>
-                    {submitting 
-                      ? 'Đang gửi...' 
-                      : requestType === 'BORROW' 
-                        ? 'Gửi Yêu Cầu Mượn' 
-                        : 'Xác Nhận Đặt Trước'}
+                    {submitting ? 'Đang thực hiện Saga...' : 'Xác Nhận Mượn Sách'}
                   </span>
                 </button>
               </div>

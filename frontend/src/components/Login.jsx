@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Library, User, Lock, UserCheck, ArrowRight, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
 
+import api, { getErrorMessage } from '../services/api';
+
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
@@ -20,14 +22,15 @@ const Login = () => {
     setSuccessMsg('');
     setLoading(true);
     try {
-      const res = await axios.post('http://localhost:8080/api/auth/google', {
+      const res = await api.post('/auth/google', {
         idToken: response.credential
       });
 
-      const { token, role, username: resUsername } = res.data;
+      const { token, role, username: resUsername, id: userId } = res.data;
       localStorage.setItem('token', token);
       localStorage.setItem('role', role);
       localStorage.setItem('username', resUsername);
+      if (userId) localStorage.setItem('userId', userId);
 
       if (role === 'MANAGER') {
         navigate('/manager/dashboard');
@@ -35,12 +38,7 @@ const Login = () => {
         navigate('/borrower/my-books');
       }
     } catch (err) {
-      const backendMessage = err.response?.data?.message || err.response?.data;
-      if (typeof backendMessage === 'string' && backendMessage.trim() !== '') {
-        setError(backendMessage);
-      } else {
-        setError('Đăng nhập bằng tài khoản Google thất bại.');
-      }
+      setError(getErrorMessage(err, 'Đăng nhập bằng tài khoản Google thất bại.'));
     } finally {
       setLoading(false);
     }
@@ -94,15 +92,16 @@ const Login = () => {
 
     if (isLogin) {
       try {
-        const response = await axios.post('http://localhost:8080/api/auth/login', {
+        const response = await api.post('/auth/login', {
           username,
           password
         });
 
-        const { token, role, username: resUsername } = response.data;
+        const { token, role, username: resUsername, id: userId } = response.data;
         localStorage.setItem('token', token);
         localStorage.setItem('role', role);
         localStorage.setItem('username', resUsername);
+        if (userId) localStorage.setItem('userId', userId);
 
         if (role === 'MANAGER') {
           navigate('/manager/dashboard');
@@ -110,34 +109,25 @@ const Login = () => {
           navigate('/borrower/my-books');
         }
       } catch (err) {
-        const backendMessage = err.response?.data?.message || err.response?.data;
-        if (typeof backendMessage === 'string' && backendMessage.trim() !== '') {
-          setError(backendMessage);
-        } else {
-          setError('Tên đăng nhập hoặc mật khẩu không chính xác.');
-        }
+        setError(getErrorMessage(err, 'Tên đăng nhập hoặc mật khẩu không chính xác.'));
       } finally {
         setLoading(false);
       }
     } else {
       // Register
       try {
-        await axios.post('http://localhost:8080/api/auth/register', {
+        const response = await api.post('/auth/register', {
           username,
           password,
           displayName
         });
         
-        setSuccessMsg('Tạo tài khoản thành công! Bạn có thể đăng nhập ngay.');
+        const successText = response.data?.message || 'Tạo tài khoản thành công! Bạn có thể đăng nhập ngay.';
+        setSuccessMsg(successText);
         setIsLogin(true);
         setPassword('');
       } catch (err) {
-        const backendMessage = err.response?.data?.message || err.response?.data;
-        if (typeof backendMessage === 'string' && backendMessage.trim() !== '') {
-          setError(backendMessage);
-        } else {
-          setError('Đăng ký không thành công, vui lòng thử lại.');
-        }
+        setError(getErrorMessage(err, 'Đăng ký không thành công, vui lòng thử lại.'));
       } finally {
         setLoading(false);
       }

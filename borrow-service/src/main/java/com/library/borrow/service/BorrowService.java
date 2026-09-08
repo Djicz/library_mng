@@ -48,6 +48,11 @@ public class BorrowService {
     }
 
     @Transactional
+    public BorrowRecord createDirectBorrow(com.library.borrow.dto.BorrowRequestDTO request) {
+        return sagaOrchestrator.initiateBorrowSaga(request);
+    }
+
+    @Transactional
     public BorrowRecord approveRequest(Long id) {
         BorrowRecord record = borrowRecordRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrCode.BORROW_RECORD_NOTFOUND));

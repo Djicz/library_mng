@@ -167,6 +167,17 @@ const Borrows = () => {
     }
   };
 
+  const handleApprove = async (id) => {
+    try {
+      const response = await api.post(`/manager/borrow/approve/${id}`);
+      triggerSuccess(response.data?.message || 'Phê duyệt và kích hoạt Saga thành công!');
+      fetchAllData();
+    } catch (err) {
+      console.error("Error approving request", err);
+      alert(getErrorMessage(err, "Lỗi khi phê duyệt mượn sách."));
+    }
+  };
+
   const handleAssignSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -176,10 +187,16 @@ const Borrows = () => {
     }
 
     try {
-      const response = await api.post('/borrows', {
+      const days = parseInt(assignData.borrowDays) || 14;
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + days);
+      const dueDateStr = targetDate.toISOString().split('T')[0];
+
+      await api.post('/manager/borrow/assign', {
         userId: assignData.userId,
         bookId: assignData.bookId,
-        borrowDays: parseInt(assignData.borrowDays) || 14
+        dueDate: dueDateStr,
+        borrowDays: days
       });
 
       setAssignData({ userId: '', bookId: '', borrowDays: 14 });
@@ -403,6 +420,16 @@ const Borrows = () => {
                         <CheckCircle2 size={12} />
                         Đã trả ({record.returnDate})
                       </span>
+                    ) : record.status === 'PENDING' ? (
+                      <span className="badge-status badge-status-warning">
+                        <Clock size={12} />
+                        Chờ Duyệt
+                      </span>
+                    ) : record.status === 'IN_PROGRESS' || record.status === 'BOOK_RESERVED' ? (
+                      <span className="badge-status badge-status-info">
+                        <RefreshCw size={12} className="animate-spin" />
+                        Đang xử lý Saga
+                      </span>
                     ) : record.status === 'APPROVED' ? (
                       overdue ? (
                         <span className="badge-status badge-status-danger">
@@ -418,7 +445,17 @@ const Borrows = () => {
                     ) : record.status === 'REJECTED_OVERDUE' ? (
                       <span className="badge-status badge-status-danger">
                         <XCircle size={12} />
-                        Bị từ chối (Nợ quá hạn)
+                        Từ chối (Nợ quá hạn)
+                      </span>
+                    ) : record.status === 'REJECTED_OUT_OF_STOCK' ? (
+                      <span className="badge-status badge-status-danger">
+                        <XCircle size={12} />
+                        Hết kho sách
+                      </span>
+                    ) : record.status === 'REJECTED' ? (
+                      <span className="badge-status badge-status-danger">
+                        <XCircle size={12} />
+                        Bị từ chối
                       </span>
                     ) : (
                       <span className="badge-status badge-status-info">
@@ -428,7 +465,17 @@ const Borrows = () => {
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    {!record.returnDate && record.status === 'APPROVED' ? (
+                    {record.status === 'PENDING' ? (
+                      <button 
+                        className="btn-primary-gradient" 
+                        style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
+                        onClick={() => handleApprove(record.id)}
+                        title="Duyệt yêu cầu và kích hoạt Saga"
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>Duyệt Ngay</span>
+                      </button>
+                    ) : !record.returnDate && record.status === 'APPROVED' ? (
                       <button 
                         className="btn-primary-gradient" 
                         style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}

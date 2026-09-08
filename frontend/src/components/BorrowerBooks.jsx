@@ -203,27 +203,33 @@ const BorrowerBooks = () => {
       }
     }
 
+    if (!userId) {
+      triggerError('Vui lòng đăng nhập lại để thực hiện mượn sách.');
+      return;
+    }
+
     setSubmitting(true);
-    setSagaStatus('Đang gửi yêu cầu mượn sách...');
 
     try {
-      // POST /api/borrows -> initiate Kafka Saga
-      const response = await api.post('/borrows', {
-        userId,
+      const days = parseInt(borrowDays) || 14;
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + days);
+      const dueDateStr = targetDate.toISOString().split('T')[0];
+
+      // POST /api/borrows -> creates PENDING borrow request waiting for admin approval
+      await api.post('/borrows', {
+        userId: userId,
         bookId: selectedBook.id,
-        borrowDays: parseInt(borrowDays) || 14
+        dueDate: dueDateStr,
+        borrowDays: days
       });
 
-      const borrowRecord = response.data?.data || response.data;
-      if (borrowRecord?.sagaId) {
-        pollSaga(borrowRecord.sagaId, selectedBook.title || selectedBook.name);
-      } else {
-        setSubmitting(false);
-        setShowModal(false);
-        triggerSuccess(`Yêu cầu mượn sách "${selectedBook.title || selectedBook.name}" đã được tiếp nhận!`);
-        fetchBooks();
-        fetchUserBorrows();
-      }
+      const bookTitle = selectedBook.title || selectedBook.name;
+      setSubmitting(false);
+      setShowModal(false);
+      triggerSuccess(`🎉 Yêu cầu mượn sách "${bookTitle}" đã được gửi thành công và đang chờ Quản trị viên/Thủ thư phê duyệt! Bạn có thể theo dõi trong mục "Sách Của Tôi".`);
+      fetchBooks();
+      fetchUserBorrows();
     } catch (error) {
       console.error("Error submitting borrow request", error);
       setSubmitting(false);
@@ -593,15 +599,10 @@ const BorrowerBooks = () => {
                   </select>
                 </div>
 
-                {/* Saga Status Indicator */}
-                {submitting && (
-                  <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '1rem', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' }}>
-                    <RefreshCw size={20} className="animate-spin" style={{ color: 'var(--primary-light)', flexShrink: 0 }} />
-                    <span style={{ fontSize: '0.85rem', color: 'var(--primary-light)', fontWeight: 600 }}>
-                      {sagaStatus || 'Đang xử lý luồng Kafka Saga...'}
-                    </span>
-                  </div>
-                )}
+                <div style={{ background: 'rgba(99, 102, 241, 0.06)', border: '1px solid rgba(99, 102, 241, 0.2)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '0.65rem', marginTop: '1rem', fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
+                  <Clock size={16} style={{ color: 'var(--primary-light)', flexShrink: 0 }} />
+                  <span>Yêu cầu sẽ được gửi tới Thủ thư để phê duyệt trước khi giao dịch trừ kho và xuất phiếu hoàn tất.</span>
+                </div>
               </div>
 
               <div className="modal-footer-custom">
@@ -619,7 +620,7 @@ const BorrowerBooks = () => {
                   disabled={submitting}
                 >
                   <span>
-                    {submitting ? 'Đang thực hiện Saga...' : 'Xác Nhận Mượn Sách'}
+                    {submitting ? 'Đang gửi yêu cầu...' : 'Gửi Yêu Cầu Mượn Sách'}
                   </span>
                 </button>
               </div>

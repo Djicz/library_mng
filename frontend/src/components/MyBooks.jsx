@@ -84,12 +84,12 @@ const MyBooks = () => {
     return records.filter(r => r.returnDate != null);
   }, [records]);
 
-  const pendingSaga = useMemo(() => {
-    return records.filter(r => r.status === 'IN_PROGRESS' || r.status === 'BOOK_RESERVED');
+  const pendingRecords = useMemo(() => {
+    return records.filter(r => r.status === 'PENDING' || r.status === 'IN_PROGRESS' || r.status === 'BOOK_RESERVED');
   }, [records]);
 
   const rejectedRecords = useMemo(() => {
-    return records.filter(r => r.status === 'REJECTED_OVERDUE' || r.status === 'REJECTED_OUT_OF_STOCK');
+    return records.filter(r => r.status === 'REJECTED' || r.status === 'REJECTED_OVERDUE' || r.status === 'REJECTED_OUT_OF_STOCK');
   }, [records]);
 
   const overdueCount = activeBorrows.filter(r => isOverdue(r.dueDate, r.returnDate)).length;
@@ -103,7 +103,7 @@ const MyBooks = () => {
             Sách Của Tôi
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: '0.25rem 0 0 0' }}>
-            Theo dõi danh sách sách đang mượn, tiến độ giao dịch và lịch sử mượn trả
+            Theo dõi danh sách sách đang mượn, yêu cầu chờ duyệt và lịch sử mượn trả
           </p>
         </div>
 
@@ -183,8 +183,8 @@ const MyBooks = () => {
             <Inbox size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Đang Xử Lý Saga</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>{pendingSaga.length}</div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Chờ Duyệt / Saga</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>{pendingRecords.length}</div>
           </div>
         </div>
 
@@ -236,7 +236,7 @@ const MyBooks = () => {
           onClick={() => setActiveTab('pending')}
         >
           <Inbox size={16} />
-          <span>Tiến Độ Saga ({pendingSaga.length})</span>
+          <span>Chờ Duyệt & Xử Lý ({pendingRecords.length})</span>
         </button>
 
         <button 
@@ -401,48 +401,69 @@ const MyBooks = () => {
         </div>
       )}
 
-      {/* Table: Tiến Độ Saga */}
+      {/* Table: Yêu Cầu Chờ Duyệt & Tiến Độ Saga */}
       {activeTab === 'pending' && (
         <div className="table-modern-wrapper">
           <table className="table-modern">
             <thead>
               <tr>
                 <th>Đầu Sách</th>
-                <th>Mã Giao Dịch Saga</th>
+                <th>Mã Phiếu / Saga ID</th>
                 <th>Ngày Tạo</th>
-                <th style={{ textAlign: 'right' }}>Trạng Thái Saga</th>
+                <th>Hạn Trả</th>
+                <th style={{ textAlign: 'right' }}>Trạng Thái</th>
               </tr>
             </thead>
             <tbody>
-              {pendingSaga.map(record => {
+              {pendingRecords.map(record => {
                 const book = booksMap.get(record.bookId) || {};
+                const isPending = record.status === 'PENDING';
+                const isInProgress = record.status === 'IN_PROGRESS';
+                const isReserved = record.status === 'BOOK_RESERVED';
+
                 return (
                   <tr key={record.id}>
                     <td>
                       <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
                         {book.title || book.name || `Sách #${record.bookId ? record.bookId.substring(0, 8) : 'N/A'}`}
                       </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Tác giả: {book.author || 'Chưa cập nhật'}
+                      </div>
                     </td>
                     <td>
                       <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--primary-light)' }}>
-                        {record.sagaId}
+                        {record.sagaId ? `${record.sagaId.substring(0, 13)}...` : `#${record.id}`}
                       </span>
                     </td>
-                    <td>{record.borrowDate}</td>
+                    <td>{record.borrowDate || 'Hôm nay'}</td>
+                    <td>{record.dueDate || '14 ngày'}</td>
                     <td style={{ textAlign: 'right' }}>
-                      <span className="badge-status badge-status-info">
-                        <RefreshCw size={12} className="animate-spin" />
-                        {record.status === 'IN_PROGRESS' ? 'Đang giữ sách kho' : 'Đang kiểm tra người dùng'}
-                      </span>
+                      {isPending ? (
+                        <span className="badge-status badge-status-warning">
+                          <Clock size={12} />
+                          Chờ Thủ Thư Duyệt
+                        </span>
+                      ) : isInProgress ? (
+                        <span className="badge-status badge-status-info">
+                          <RefreshCw size={12} className="animate-spin" />
+                          Đang giữ kho sách...
+                        </span>
+                      ) : (
+                        <span className="badge-status badge-status-info">
+                          <RefreshCw size={12} className="animate-spin" />
+                          Đang kiểm tra quá hạn...
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
               })}
 
-              {pendingSaga.length === 0 && (
+              {pendingRecords.length === 0 && (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
-                    <p style={{ margin: 0, fontWeight: 600 }}>Không có giao dịch nào đang xử lý dở dang.</p>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
+                    <p style={{ margin: 0, fontWeight: 600 }}>Không có yêu cầu mượn sách nào đang chờ duyệt.</p>
                   </td>
                 </tr>
               )}
@@ -459,6 +480,7 @@ const MyBooks = () => {
               <tr>
                 <th>Đầu Sách</th>
                 <th>Mã Phiếu</th>
+                <th>Ngày Tạo</th>
                 <th>Lý Do Từ Chối</th>
                 <th style={{ textAlign: 'right' }}>Trạng Thái</th>
               </tr>
@@ -467,6 +489,7 @@ const MyBooks = () => {
               {rejectedRecords.map(record => {
                 const book = booksMap.get(record.bookId) || {};
                 const isOverdueReject = record.status === 'REJECTED_OVERDUE';
+                const isOutOfStock = record.status === 'REJECTED_OUT_OF_STOCK';
 
                 return (
                   <tr key={record.id}>
@@ -474,17 +497,21 @@ const MyBooks = () => {
                       <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
                         {book.title || book.name || `Sách #${record.bookId ? record.bookId.substring(0, 8) : 'N/A'}`}
                       </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Tác giả: {book.author || 'Chưa cập nhật'}
+                      </div>
                     </td>
                     <td>#{record.id}</td>
+                    <td>{record.borrowDate || 'N/A'}</td>
                     <td>
                       <span style={{ color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600 }}>
-                        {record.rejectReason || (isOverdueReject ? 'Tài khoản có sách nợ quá hạn (Saga Compensated)' : 'Hết sách tồn kho')}
+                        {record.rejectReason || (isOverdueReject ? 'Tài khoản có sách nợ quá hạn (Saga Rollback)' : isOutOfStock ? 'Hết sách trong kho' : 'Bị từ chối bởi thủ thư')}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <span className="badge-status badge-status-danger">
                         <XCircle size={12} />
-                        {isOverdueReject ? 'Saga Rollback' : 'Từ chối'}
+                        {isOverdueReject ? 'Saga Rollback' : isOutOfStock ? 'Hết kho' : 'Từ chối'}
                       </span>
                     </td>
                   </tr>
@@ -493,7 +520,7 @@ const MyBooks = () => {
 
               {rejectedRecords.length === 0 && (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
                     <p style={{ margin: 0, fontWeight: 600 }}>Không có đơn nào bị từ chối.</p>
                   </td>
                 </tr>

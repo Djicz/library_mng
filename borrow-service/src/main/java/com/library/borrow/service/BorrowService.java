@@ -20,6 +20,9 @@ public class BorrowService {
     @Autowired
     private BorrowRecordRepository borrowRecordRepository;
 
+    @Autowired
+    private com.library.borrow.saga.BorrowSagaOrchestrator sagaOrchestrator;
+
     public List<BorrowRecord> getAllBorrowRecords() {
         return borrowRecordRepository.findAll();
     }
@@ -48,15 +51,16 @@ public class BorrowService {
     public BorrowRecord approveRequest(Long id) {
         BorrowRecord record = borrowRecordRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrCode.BORROW_RECORD_NOTFOUND));
-        record.setStatus(BorrowStatus.APPROVED);
-        return borrowRecordRepository.save(record);
+        
+        // Kích hoạt Saga phân tán kiểm tra kho và quá hạn
+        return sagaOrchestrator.startApprovedSaga(record);
     }
 
     @Transactional
     public BorrowRecord rejectRequest(Long id, String reason) {
         BorrowRecord record = borrowRecordRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrCode.BORROW_RECORD_NOTFOUND));
-        record.setStatus(BorrowStatus.REJECTED_OVERDUE);
+        record.setStatus(BorrowStatus.REJECTED);
         record.setRejectReason(reason);
         return borrowRecordRepository.save(record);
     }

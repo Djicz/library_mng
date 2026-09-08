@@ -26,12 +26,12 @@ public class BorrowController {
     private BorrowRecordRepository borrowRepository;
 
     /**
-     * Kích hoạt Saga mượn sách bất đồng bộ
+     * Tạo yêu cầu mượn sách (Trạng thái PENDING - Chờ thủ thư phê duyệt)
      */
     @PostMapping
     public ResponseEntity<ApiResponse<BorrowRecord>> requestBorrow(@RequestBody BorrowRequestDTO request) {
-        BorrowRecord record = sagaOrchestrator.initiateBorrowSaga(request);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(new ApiResponse<>(1, "Yêu cầu mượn sách đã được tiếp nhận và đang xử lý", record));
+        BorrowRecord record = sagaOrchestrator.createPendingBorrow(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(1, "Yêu cầu mượn sách đã được gửi và đang chờ quản trị viên phê duyệt", record));
     }
 
     /**

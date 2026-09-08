@@ -33,12 +33,12 @@ public class BorrowSagaOrchestrator {
     private KafkaTemplate<String, Object> kafkaTemplate;
 
     /**
-     * BƯỚC 1: KHỞI TẠO SAGA & GỬI LỆNH TRỪ KHO
+     * BƯỚC 0: TẠO YÊU CẦU MƯỢN SÁCH Ở TRẠNG THÁI PENDING (CHỜ THỦ THƯ DUYỆT)
      */
     @Transactional
-    public BorrowRecord initiateBorrowSaga(BorrowRequestDTO request) {
+    public BorrowRecord createPendingBorrow(BorrowRequestDTO request) {
         String sagaId = UUID.randomUUID().toString();
-        log.info("[SAGA ORCHESTRATOR] === BẮT ĐẦU SAGA MƯỢN SÁCH: {} ===", sagaId);
+        log.info("[SAGA ORCHESTRATOR] === TIẾP NHẬN YÊU CẦU MƯỢN SÁCH (PENDING): {} ===", sagaId);
 
         BorrowRecord record = new BorrowRecord();
         record.setSagaId(sagaId);
@@ -46,15 +46,35 @@ public class BorrowSagaOrchestrator {
         record.setBookId(request.getBookId());
         record.setBorrowDate(LocalDate.now());
         record.setDueDate(request.getDueDate() != null ? request.getDueDate() : LocalDate.now().plusDays(14));
+        record.setStatus(BorrowStatus.PENDING);
+        return borrowRepository.save(record);
+    }
+
+    /**
+     * BƯỚC 1: ADMIN PHÊ DUYỆT -> KÍCH HOẠT SAGA & GỬI LỆNH TRỪ KHO SÁCH
+     */
+    @Transactional
+    public BorrowRecord startApprovedSaga(BorrowRecord record) {
+        log.info("[SAGA ORCHESTRATOR] === ADMIN ĐÃ DUYỆT. KÍCH HOẠT SAGA TRỪ KHO: {} ===", record.getSagaId());
+
         record.setStatus(BorrowStatus.IN_PROGRESS);
         borrowRepository.save(record);
 
         // Orchestrator phát Command 1: Trừ kho sách
-        ReserveBookCommand cmd = new ReserveBookCommand(sagaId, request.getBookId(), 1);
-        log.info("[SAGA ORCHESTRATOR] 1. Phát command trừ kho 'book.cmd.reserve' cho bookId: {}", request.getBookId());
-        kafkaTemplate.send("book.cmd.reserve", sagaId, cmd);
+        ReserveBookCommand cmd = new ReserveBookCommand(record.getSagaId(), record.getBookId(), 1);
+        log.info("[SAGA ORCHESTRATOR] 1. Phát command trừ kho 'book.cmd.reserve' cho bookId: {}", record.getBookId());
+        kafkaTemplate.send("book.cmd.reserve", record.getSagaId(), cmd);
 
         return record;
+    }
+
+    /**
+     * Tự động khởi tạo và chạy Saga trực tiếp (nếu cần)
+     */
+    @Transactional
+    public BorrowRecord initiateBorrowSaga(BorrowRequestDTO request) {
+        BorrowRecord record = createPendingBorrow(request);
+        return startApprovedSaga(record);
     }
 
     /**

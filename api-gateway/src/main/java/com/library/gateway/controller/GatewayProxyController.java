@@ -25,9 +25,13 @@ public class GatewayProxyController {
 
     // 1. User & Auth & Profile & Notification Routes -> User Service (8081)
     @RequestMapping(value = {
+            "/api/auth",
             "/api/auth/**",
+            "/api/users",
             "/api/users/**",
+            "/api/profile",
             "/api/profile/**",
+            "/api/notifications",
             "/api/notifications/**"
     }, method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH})
     public ResponseEntity<byte[]> proxyUser(HttpServletRequest request) throws IOException {
@@ -36,9 +40,13 @@ public class GatewayProxyController {
 
     // 2. Book & Category Routes -> Book Service (8082)
     @RequestMapping(value = {
+            "/api/books",
             "/api/books/**",
+            "/api/categories",
             "/api/categories/**",
+            "/api/manager/category",
             "/api/manager/category/**",
+            "/api/manager/books",
             "/api/manager/books/**"
     }, method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH})
     public ResponseEntity<byte[]> proxyBook(HttpServletRequest request) throws IOException {
@@ -47,12 +55,19 @@ public class GatewayProxyController {
 
     // 3. Borrow, Manager Borrow, Requests & Dashboard Routes -> Borrow Service (8083)
     @RequestMapping(value = {
+            "/api/borrows",
             "/api/borrows/**",
+            "/api/borrower",
             "/api/borrower/**",
+            "/api/manager/borrow",
             "/api/manager/borrow/**",
+            "/api/manager/borrows",
             "/api/manager/borrows/**",
+            "/api/requests",
             "/api/requests/**",
+            "/api/dashboard",
             "/api/dashboard/**",
+            "/api/manager/dashboard",
             "/api/manager/dashboard/**"
     }, method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH})
     public ResponseEntity<byte[]> proxyBorrow(HttpServletRequest request) throws IOException {
